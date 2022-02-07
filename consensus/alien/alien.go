@@ -1572,7 +1572,7 @@ func (a *Alien) VerifyHeaderExtra(chain consensus.ChainHeaderReader, header *typ
 	if err != nil {
 		log.Error("VerifyHeaderExtra error", "error", err)
 	}
-	return nil
+	return err
 }
 
 func doVerifyHeaderExtra(header *types.Header, verifyExtra []byte, a *Alien) error {
