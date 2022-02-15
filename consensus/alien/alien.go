@@ -77,11 +77,11 @@ var (
 	mcTxDefaultGasLimit              = uint64(3000000)                                                   // default limit to build transaction for main chain
 	proposalDeposit                  = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt(1e+4))             // default current proposalDeposit
 	scRentLengthRecommend            = uint64(0)                                                         // block number for split each side chain rent fee
-	managerAddressExchRate           = common.HexToAddress("uxf604b75112ce36f256cec775e365df3895aa2100") ////TODO seaskycheng
-	managerAddressSystem             = common.HexToAddress("uxf604b75112ce36f256cec775e365df3895aa2100") ////TODO seaskycheng
-	managerAddressWdthPnsh           = common.HexToAddress("uxf604b75112ce36f256cec775e365df3895aa2100") ////TODO seaskycheng
-	managerAddressFlowReport         = common.HexToAddress("uxf604b75112ce36f256cec775e365df3895aa2100") ////TODO seaskycheng
-	managerAddressManager            = common.HexToAddress("uxf604b75112ce36f256cec775e365df3895aa2100") ////TODO seaskycheng
+	managerAddressExchRate           = common.HexToAddress("uxa875ef431fb92768a8db7a1c324dc2b6ad729fea") ////TODO seaskycheng
+        managerAddressSystem             = common.HexToAddress("ux47aff2bd9e11fb46ef6054f93a7664abf079e17f") ////TODO seaskycheng
+        managerAddressWdthPnsh           = common.HexToAddress("uxa1ce269520ce370edac3ec247873881da6f87da8") ////TODO seaskycheng
+        managerAddressFlowReport         = common.HexToAddress("uxe4c5a1770a70b1c339a9eb482920aa8b59ec8fd8") ////TODO seaskycheng
+        managerAddressManager            = common.HexToAddress("ux4e0a3553de9f87499e6ba25af5ee4acc068897cc") ////TODO seaskycheng
 )
 
 // Various error messages to mark blocks invalid. These should be private to
