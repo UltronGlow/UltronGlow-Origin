@@ -26,7 +26,7 @@ const (
 	rewardLockParamInterval  = 24 * 60 * 60
 	maxCandidateMiner = 500  //	The maximum number of candidate nodes participating in each election is 500
 	electionPartitionThreshold = 36 //Election partition threshold
-	//signFixBlockNumber = 100000
+	signFixBlockNumber = 326630
 )
 
 var (
