@@ -833,9 +833,9 @@ func (s *Snapshot) apply(headers []*types.Header, db ethdb.Database) (*Snapshot,
 		snap.updateConfigISPQOS(headerExtra.ConfigISPQOS)
 		snap.updateManagerAddress(headerExtra.ManagerAddress)
 		snap.updateLockParameters(headerExtra.LockParameters)
-		//if header.Number.Uint64()%(snap.config.MaxSignerCount*snap.LCRS) == 0 && header.Number.Uint64()>= signFixBlockNumber {
-		//	snap.updateSignerNumber(headerExtra.SignerQueue)
-		//}
+		if header.Number.Uint64()%(snap.config.MaxSignerCount*snap.LCRS) == 0 && header.Number.Uint64()>= signFixBlockNumber {
+			snap.updateSignerNumber(headerExtra.SignerQueue)
+		}
 	}
 	snap.Number += uint64(len(headers))
 	snap.Hash = headers[len(headers)-1].Hash()
