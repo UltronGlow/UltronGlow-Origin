@@ -134,7 +134,7 @@ func (s *LockData) updateLockData(snap *Snapshot, item LockRewardRecord, headerN
 	flowRevenusTarget.RewardBalance[item.IsReward] = big.NewInt(0)
 }
 
-func (s *LockData) payProfit(hash common.Hash, db ethdb.Database, period uint64, headerNumber uint64, currentGrantProfit []consensus.GrantProfitRecord, playGrantProfit []consensus.GrantProfitRecord, header *types.Header, state *state.StateDB) ([]consensus.GrantProfitRecord, []consensus.GrantProfitRecord, error) {
+func (s *LockData)  payProfit(hash common.Hash, db ethdb.Database, period uint64, headerNumber uint64, currentGrantProfit []consensus.GrantProfitRecord, playGrantProfit []consensus.GrantProfitRecord, header *types.Header, state *state.StateDB,payAddressAll map[common.Address]*big.Int) ([]consensus.GrantProfitRecord, []consensus.GrantProfitRecord, error) {
 	timeNow := time.Now()
 	rlsLockBalance := make(map[common.Address]*RlsLockData)
 	err := s.saveCacheL1(db, hash)
@@ -152,10 +152,12 @@ func (s *LockData) payProfit(hash common.Hash, db ethdb.Database, period uint64,
 	}
 	s.appendRlsLockData(rlsLockBalance, items)
 
+	log.Info("payProfit load from disk","Locktype",s.Locktype,"len(rlsLockBalance)", len(rlsLockBalance), "elapsed", time.Since(timeNow),"number",header.Number.Uint64())
+
 	for address, items := range rlsLockBalance {
 		for blockNumber, item1 := range items.LockBalance {
 			for which, item := range item1 {
-				result, amount := paymentPledge(true, item, state, header)
+				result, amount := paymentPledge(true, item, state, header,payAddressAll)
 				if 0 == result {
 					playGrantProfit = append(playGrantProfit, consensus.GrantProfitRecord{
 						Which:           which,
@@ -180,7 +182,7 @@ func (s *LockData) payProfit(hash common.Hash, db ethdb.Database, period uint64,
 			}
 		}
 	}
-	log.Info("payProfit "+s.Locktype, "elapsed", time.Since(timeNow))
+	log.Info("payProfit ","Locktype",s.Locktype, "elapsed", time.Since(timeNow),"number",header.Number.Uint64())
 	return currentGrantProfit, playGrantProfit, nil
 }
 
@@ -394,22 +396,22 @@ func (s *LockProfitSnap) updateLockData(snap *Snapshot, LockReward []LockRewardR
 	}
 }
 
-func (s *LockProfitSnap) payProfit(db ethdb.Database, period uint64, headerNumber uint64, currentGrantProfit []consensus.GrantProfitRecord, playGrantProfit []consensus.GrantProfitRecord, header *types.Header, state *state.StateDB) ([]consensus.GrantProfitRecord, []consensus.GrantProfitRecord, error) {
+func (s *LockProfitSnap) payProfit(db ethdb.Database, period uint64, headerNumber uint64, currentGrantProfit []consensus.GrantProfitRecord, playGrantProfit []consensus.GrantProfitRecord, header *types.Header, state *state.StateDB, payAddressAll map[common.Address]*big.Int) ([]consensus.GrantProfitRecord, []consensus.GrantProfitRecord, error) {
 	number := header.Number.Uint64()
 	if number == 0 {
 		return currentGrantProfit, playGrantProfit, nil
 	}
 	if isPaySignerRewards(number, period) {
 		log.Info("LockProfitSnap pay reward profit")
-		return s.RewardLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state)
+		return s.RewardLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state,payAddressAll)
 	}
 	if isPayFlowRewards(number, period) {
 		log.Info("LockProfitSnap pay flow profit")
-		return s.FlowLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state)
+		return s.FlowLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state,payAddressAll)
 	}
 	if isPayBandWidthRewards(number, period) {
 		log.Info("LockProfitSnap pay bandwidth profit")
-		return s.BandwidthLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state)
+		return s.BandwidthLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state,payAddressAll)
 	}
 	return currentGrantProfit, playGrantProfit, nil
 }
