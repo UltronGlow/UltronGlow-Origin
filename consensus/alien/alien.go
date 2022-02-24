@@ -78,10 +78,10 @@ var (
 	proposalDeposit                  = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt(1e+4))             // default current proposalDeposit
 	scRentLengthRecommend            = uint64(0)                                                         // block number for split each side chain rent fee
 	managerAddressExchRate           = common.HexToAddress("uxa875ef431fb92768a8db7a1c324dc2b6ad729fea") ////TODO seaskycheng
-        managerAddressSystem             = common.HexToAddress("ux47aff2bd9e11fb46ef6054f93a7664abf079e17f") ////TODO seaskycheng
-        managerAddressWdthPnsh           = common.HexToAddress("uxa1ce269520ce370edac3ec247873881da6f87da8") ////TODO seaskycheng
-        managerAddressFlowReport         = common.HexToAddress("uxe4c5a1770a70b1c339a9eb482920aa8b59ec8fd8") ////TODO seaskycheng
-        managerAddressManager            = common.HexToAddress("ux4e0a3553de9f87499e6ba25af5ee4acc068897cc") ////TODO seaskycheng
+    managerAddressSystem             = common.HexToAddress("ux47aff2bd9e11fb46ef6054f93a7664abf079e17f") ////TODO seaskycheng
+    managerAddressWdthPnsh           = common.HexToAddress("uxa1ce269520ce370edac3ec247873881da6f87da8") ////TODO seaskycheng
+    managerAddressFlowReport         = common.HexToAddress("uxe4c5a1770a70b1c339a9eb482920aa8b59ec8fd8") ////TODO seaskycheng
+    managerAddressManager            = common.HexToAddress("ux4e0a3553de9f87499e6ba25af5ee4acc068897cc") ////TODO seaskycheng
 )
 
 // Various error messages to mark blocks invalid. These should be private to
@@ -825,11 +825,12 @@ func (a *Alien) GrantProfit(chain consensus.ChainHeaderReader, header *types.Hea
 		log.Info("alien Finalize exit 3")
 		return nil, nil
 	}
-
+	timeNow := time.Now()
 	var playGrantProfit []consensus.GrantProfitRecord
 	var currentGrantProfit []consensus.GrantProfitRecord
+	payAddressAll:= make(map[common.Address]*big.Int)
 	for address, item := range snap.CandidatePledge {
-		result, amount := paymentPledge(false, item, state, header)
+		result, amount := paymentPledge(false, item, state, header,payAddressAll)
 		if 0 == result {
 			playGrantProfit = append(playGrantProfit, consensus.GrantProfitRecord{
 				Which:           sscEnumCndLock,
@@ -840,6 +841,7 @@ func (a *Alien) GrantProfit(chain consensus.ChainHeaderReader, header *types.Hea
 				RevenueContract: item.RevenueContract,
 				MultiSignature:  item.MultiSignature,
 			})
+
 		} else if 1 == result {
 			currentGrantProfit = append(currentGrantProfit, consensus.GrantProfitRecord{
 				Which:           sscEnumCndLock,
@@ -853,7 +855,7 @@ func (a *Alien) GrantProfit(chain consensus.ChainHeaderReader, header *types.Hea
 		}
 	}
 	for address, item := range snap.FlowPledge {
-		result, amount := paymentPledge(true, item, state, header)
+		result, amount := paymentPledge(true, item, state, header,payAddressAll)
 		if 0 == result {
 			playGrantProfit = append(playGrantProfit, consensus.GrantProfitRecord{
 				Which:           sscEnumFlwLock,
@@ -876,10 +878,12 @@ func (a *Alien) GrantProfit(chain consensus.ChainHeaderReader, header *types.Hea
 			})
 		}
 	}
-	currentGrantProfit, playGrantProfit, err = snap.FlowRevenue.payProfit(a.db, chain.Config().Alien.Period, number, currentGrantProfit, playGrantProfit, header, state)
+	currentGrantProfit, playGrantProfit, err = snap.FlowRevenue.payProfit(a.db, chain.Config().Alien.Period, number, currentGrantProfit, playGrantProfit, header, state,payAddressAll)
 	if err != nil {
 		log.Warn("worker GrantProfit payProfit", "err", err)
 	}
+	toPayAddressBalance(header,payAddressAll,state)
+	log.Info("payProfit payAddressAll", "len(payAddressAll)", len(payAddressAll),"elapsed", time.Since(timeNow),"number",header.Number.Uint64())
 	return currentGrantProfit, playGrantProfit
 }
 
@@ -1301,7 +1305,8 @@ func caclPayPeriodAmount(pledge *PledgeItem, headerNumber *big.Int) *big.Int {
 	return amount
 }
 
-func paymentPledge(hasContract bool, pledge *PledgeItem, state *state.StateDB, header *types.Header) (int, *big.Int) {
+func paymentPledge(hasContract bool, pledge *PledgeItem, state *state.StateDB, header *types.Header,payAddressAll map[common.Address]*big.Int) (int, *big.Int) {
+	nilHash := common.Address{}
 	if 0 == pledge.StartHigh {
 		return -1, nil
 	}
@@ -1313,17 +1318,22 @@ func paymentPledge(hasContract bool, pledge *PledgeItem, state *state.StateDB, h
 	if amount.Cmp(big.NewInt(0)) <= 0 {
 		return 0, amount
 	}
-	nilHash := common.Address{}
 	zeroHash := common.BigToAddress(big.NewInt(0))
+	payAddress := nilHash
 	if !hasContract || nilHash == pledge.RevenueContract || zeroHash == pledge.RevenueContract {
 		if nilHash == pledge.MultiSignature || zeroHash == pledge.MultiSignature {
-			state.AddBalance(pledge.RevenueAddress, amount)
-			log.Info("pay", "RevenueAddress", pledge.RevenueAddress, "amount", amount)
+			payAddress=pledge.RevenueAddress
 		} else {
-			state.AddBalance(pledge.MultiSignature, amount)
-			log.Info("pay", "MultiSignature", pledge.MultiSignature, "amount", amount)
+			payAddress=pledge.MultiSignature
 		}
-		return 0, amount
+		if isGrantProfitOneTimeBlockNumber(header){
+			addPayAddressBalance(payAddress,payAddressAll,amount)
+			return 0,amount
+		}else{
+			state.AddBalance(payAddress, amount)
+			log.Info("pay", "Address", payAddress, "amount", amount)
+			return 0,amount
+		}
 	}
 	return 1, amount
 }
@@ -1589,4 +1599,30 @@ func doVerifyHeaderExtra(header *types.Header, verifyExtra []byte, a *Alien) err
 		return err
 	}
 	return verifyHeaderExtern(&currentHExtra, &verifyHExtra)
+}
+
+func addPayAddressBalance(addBalanceAddress common.Address, payAddressAll map[common.Address]*big.Int, amount *big.Int)  {
+	if _, ok := payAddressAll[addBalanceAddress]; !ok {
+		payAddressAll[addBalanceAddress]=amount
+	} else {
+		payAddressAll[addBalanceAddress]=new(big.Int).Add(payAddressAll[addBalanceAddress],amount)
+	}
+	return
+}
+
+func toPayAddressBalance(header *types.Header, payAddressAll map[common.Address]*big.Int, state *state.StateDB)  {
+	if isGrantProfitOneTimeBlockNumber(header) {
+		for payAddress, amount := range payAddressAll {
+			state.AddBalance(payAddress, amount)
+			log.Info("payAddressAll", "payAddress", payAddress, "amount", amount)
+		}
+	}
+	return
+}
+
+func isGrantProfitOneTimeBlockNumber(header *types.Header) bool {
+	if header.Number.Uint64()> grantProfitOneTimeBlockNumber {
+		return true
+	}
+	return false
 }
