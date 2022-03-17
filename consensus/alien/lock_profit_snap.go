@@ -68,6 +68,73 @@ func (l *LockData) copy() *LockData {
 	return clone
 }
 
+func (s *LockData) addLockData(snap *Snapshot, item LockRewardRecord, headerNumber *big.Int) {
+	if _, ok := s.FlowRevenue[item.Target]; !ok {
+		s.FlowRevenue[item.Target] = &LockBalanceData{
+			RewardBalance: make(map[uint32]*big.Int),
+			LockBalance:   make(map[uint64]map[uint32]*PledgeItem),
+		}
+	}
+	flowRevenusTarget := s.FlowRevenue[item.Target]
+	if _, ok := flowRevenusTarget.RewardBalance[item.IsReward]; !ok {
+		flowRevenusTarget.RewardBalance[item.IsReward] = new(big.Int).Set(item.Amount)
+	} else {
+		flowRevenusTarget.RewardBalance[item.IsReward] = new(big.Int).Add(flowRevenusTarget.RewardBalance[item.IsReward], item.Amount)
+	}
+}
+
+func (s *LockData) updateAllLockData(snap *Snapshot, isReward uint32, headerNumber *big.Int) {
+	for target, flowRevenusTarget := range s.FlowRevenue {
+		if 0 >= flowRevenusTarget.RewardBalance[isReward].Cmp(big.NewInt(0)) {
+			continue
+		}
+		if _, ok := flowRevenusTarget.LockBalance[headerNumber.Uint64()]; !ok {
+			flowRevenusTarget.LockBalance[headerNumber.Uint64()] = make(map[uint32]*PledgeItem)
+		}
+		lockBalance := flowRevenusTarget.LockBalance[headerNumber.Uint64()]
+		// use reward release
+		lockPeriod := snap.SystemConfig.LockParameters[sscEnumRwdLock].LockPeriod
+		rlsPeriod := snap.SystemConfig.LockParameters[sscEnumRwdLock].RlsPeriod
+		interval := snap.SystemConfig.LockParameters[sscEnumRwdLock].Interval
+		revenueAddress := target
+		revenueContract := common.Address{}
+		multiSignature := common.Address{}
+
+		if sscEnumSignerReward == isReward {
+			// singer reward
+			if revenue, ok := snap.RevenueNormal[target]; ok {
+				revenueAddress = revenue.RevenueAddress
+				revenueContract = revenue.RevenueContract
+				multiSignature = revenue.MultiSignature
+			}
+		} else {
+			// flow or bandwidth reward
+			if revenue, ok := snap.RevenueFlow[target]; ok {
+				revenueAddress = revenue.RevenueAddress
+				revenueContract = revenue.RevenueContract
+				multiSignature = revenue.MultiSignature
+			}
+		}
+		if _, ok := lockBalance[isReward]; !ok {
+			lockBalance[isReward] = &PledgeItem{
+				Amount:          big.NewInt(0),
+				PledgeType:      isReward,
+				Playment:        big.NewInt(0),
+				LockPeriod:      lockPeriod,
+				RlsPeriod:       rlsPeriod,
+				Interval:        interval,
+				StartHigh:       headerNumber.Uint64(),
+				TargetAddress:   target,
+				RevenueAddress:  revenueAddress,
+				RevenueContract: revenueContract,
+				MultiSignature:  multiSignature,
+			}
+		}
+		lockBalance[isReward].Amount = new(big.Int).Add(lockBalance[isReward].Amount, flowRevenusTarget.RewardBalance[isReward])
+		flowRevenusTarget.RewardBalance[isReward] = big.NewInt(0)
+	}
+}
+
 func (s *LockData) updateLockData(snap *Snapshot, item LockRewardRecord, headerNumber *big.Int) {
 	if _, ok := s.FlowRevenue[item.Target]; !ok {
 		s.FlowRevenue[item.Target] = &LockBalanceData{
@@ -134,7 +201,7 @@ func (s *LockData) updateLockData(snap *Snapshot, item LockRewardRecord, headerN
 	flowRevenusTarget.RewardBalance[item.IsReward] = big.NewInt(0)
 }
 
-func (s *LockData)  payProfit(hash common.Hash, db ethdb.Database, period uint64, headerNumber uint64, currentGrantProfit []consensus.GrantProfitRecord, playGrantProfit []consensus.GrantProfitRecord, header *types.Header, state *state.StateDB,payAddressAll map[common.Address]*big.Int) ([]consensus.GrantProfitRecord, []consensus.GrantProfitRecord, error) {
+func (s *LockData) payProfit(hash common.Hash, db ethdb.Database, period uint64, headerNumber uint64, currentGrantProfit []consensus.GrantProfitRecord, playGrantProfit []consensus.GrantProfitRecord, header *types.Header, state *state.StateDB, payAddressAll map[common.Address]*big.Int) ([]consensus.GrantProfitRecord, []consensus.GrantProfitRecord, error) {
 	timeNow := time.Now()
 	rlsLockBalance := make(map[common.Address]*RlsLockData)
 	err := s.saveCacheL1(db, hash)
@@ -152,12 +219,12 @@ func (s *LockData)  payProfit(hash common.Hash, db ethdb.Database, period uint64
 	}
 	s.appendRlsLockData(rlsLockBalance, items)
 
-	log.Info("payProfit load from disk","Locktype",s.Locktype,"len(rlsLockBalance)", len(rlsLockBalance), "elapsed", time.Since(timeNow),"number",header.Number.Uint64())
+	log.Info("payProfit load from disk", "Locktype", s.Locktype, "len(rlsLockBalance)", len(rlsLockBalance), "elapsed", time.Since(timeNow), "number", header.Number.Uint64())
 
 	for address, items := range rlsLockBalance {
 		for blockNumber, item1 := range items.LockBalance {
 			for which, item := range item1 {
-				result, amount := paymentPledge(true, item, state, header,payAddressAll)
+				result, amount := paymentPledge(true, item, state, header, payAddressAll)
 				if 0 == result {
 					playGrantProfit = append(playGrantProfit, consensus.GrantProfitRecord{
 						Which:           which,
@@ -182,7 +249,7 @@ func (s *LockData)  payProfit(hash common.Hash, db ethdb.Database, period uint64
 			}
 		}
 	}
-	log.Info("payProfit ","Locktype",s.Locktype, "elapsed", time.Since(timeNow),"number",header.Number.Uint64())
+	log.Info("payProfit ", "Locktype", s.Locktype, "elapsed", time.Since(timeNow), "number", header.Number.Uint64())
 	return currentGrantProfit, playGrantProfit, nil
 }
 
@@ -235,8 +302,97 @@ func (s *LockData) updateGrantProfit(grantProfit []consensus.GrantProfitRecord, 
 		}
 	}
 	if hasChanged {
-		s.saveCacheL2(db, rlsLockBalance, hash)
+			s.saveCacheL2(db, rlsLockBalance, hash)
 	}
+	return nil
+}
+
+func (snap *LockProfitSnap) updateMergeLockData( db ethdb.Database,period uint64,hash common.Hash) error {
+	log.Info("begin merge lockdata")
+	 err := snap.RewardLock.mergeLockData(db,period,hash)
+	 if err == nil {
+	 	log.Info("updateMergeLockData","merge lockdata successful err=",err)
+	 }else{
+		 log.Info("updateMergeLockData","merge lockdata faild ",err)
+	 }
+	 return err
+}
+func (s *LockData) mergeLockData(db ethdb.Database,period uint64,hash common.Hash) error{
+	rlsLockBalance := make(map[common.Address]*RlsLockData)
+	items := []*PledgeItem{}
+	for _, pledges := range s.FlowRevenue {
+		for _, pledge1 := range pledges.LockBalance {
+			for _, pledge := range pledge1 {
+				items = append(items, pledge)
+			}
+		}
+	}
+
+	s.appendRlsLockData(rlsLockBalance, items)
+
+	items, err := s.loadCacheL1(db)
+	if err != nil {
+		return err
+	}
+	s.appendRlsLockData(rlsLockBalance, items)
+	items, err = s.loadCacheL2(db)
+	if err != nil {
+		return err
+	}
+	s.appendRlsLockData(rlsLockBalance, items)
+	mergeRlsLkBalance := make(map[common.Hash]*RlsLockData)
+	blockPerDay := secondsPerDay / period
+	for  _,rlsLockData := range rlsLockBalance {
+		for  lockNumber,pledgeItem := range rlsLockData.LockBalance {
+			bnumber :=  blockPerDay * (lockNumber / blockPerDay)+1
+			for locktype,item := range  pledgeItem {
+				hash :=common.HexToHash(item.TargetAddress.String()+item.RevenueAddress.String()+item.RevenueContract.String()+item.MultiSignature.String())
+				if _, ok := mergeRlsLkBalance[hash]; !ok {
+					mergeRlsLkBalance[hash] = &RlsLockData{
+						LockBalance: make(map[uint64]map[uint32]*PledgeItem),
+					}
+				}
+				if _, ok := mergeRlsLkBalance[hash].LockBalance[bnumber]; !ok {
+					mergeRlsLkBalance[hash].LockBalance[bnumber] =  make(map[uint32]*PledgeItem)
+				}
+				mergepledgeItem :=	mergeRlsLkBalance[hash].LockBalance[bnumber]
+				if _, ok :=mergepledgeItem[locktype]; !ok {
+					mergepledgeItem[locktype]=item
+					mergepledgeItem[locktype].StartHigh=bnumber
+				}else{
+					mergepledgeItem[locktype].Amount=new(big.Int).Add(mergepledgeItem[locktype].Amount,item.Amount)
+					mergepledgeItem[locktype].Playment=new(big.Int).Add(mergepledgeItem[locktype].Playment,item.Playment)
+				}
+			}
+		}
+	}
+	
+	return s.saveMereCacheL2(db,mergeRlsLkBalance,hash)
+}
+
+func (s *LockData) saveMereCacheL2(db ethdb.Database, rlsLockBalance map[common.Hash]*RlsLockData, hash common.Hash) error {
+	items := []*PledgeItem{}
+	for _, pledges := range rlsLockBalance {
+		for _, pledge1 := range pledges.LockBalance {
+			for _, pledge := range pledge1 {
+				items = append(items, pledge)
+			}
+		}
+	}
+	err, buf := PledgeItemEncodeRlp(items)
+	if err != nil {
+		return err
+	}
+	err = db.Put(append([]byte("alien-"+s.Locktype+"-l2-"), hash[:]...), buf)
+	if err != nil {
+		return err
+	}
+	for _, pledges := range s.FlowRevenue {
+		pledges.LockBalance = make(map[uint64]map[uint32]*PledgeItem)
+	}
+	s.CacheL1 = []common.Hash{}
+	s.CacheL2 = hash
+	log.Info("LockProfitSnap saveMereCacheL2", "Locktype", s.Locktype, "cache hash", hash, "len", len(items))
 	return nil
 }
 
@@ -385,13 +541,24 @@ func (s *LockProfitSnap) copy() *LockProfitSnap {
 }
 
 func (s *LockProfitSnap) updateLockData(snap *Snapshot, LockReward []LockRewardRecord, headerNumber *big.Int) {
+	blockNumber := headerNumber.Uint64()
 	for _, item := range LockReward {
 		if sscEnumSignerReward == item.IsReward {
-			s.RewardLock.updateLockData(snap, item, headerNumber)
+			if islockSimplifyEffectBlocknumber(blockNumber) {
+				s.RewardLock.addLockData(snap, item, headerNumber)
+			} else {
+				s.RewardLock.updateLockData(snap, item, headerNumber)
+			}
 		} else if sscEnumFlwReward == item.IsReward {
 			s.FlowLock.updateLockData(snap, item, headerNumber)
 		} else if sscEnumBandwidthReward == item.IsReward {
 			s.BandwidthLock.updateLockData(snap, item, headerNumber)
+		}
+	}
+	if islockSimplifyEffectBlocknumber(blockNumber) {
+		blockPerDay := snap.getBlockPreDay()
+		if 0 == blockNumber%blockPerDay && blockNumber != 0 {
+			s.RewardLock.updateAllLockData(snap, sscEnumSignerReward, headerNumber)
 		}
 	}
 }
@@ -403,15 +570,15 @@ func (s *LockProfitSnap) payProfit(db ethdb.Database, period uint64, headerNumbe
 	}
 	if isPaySignerRewards(number, period) {
 		log.Info("LockProfitSnap pay reward profit")
-		return s.RewardLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state,payAddressAll)
+		return s.RewardLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state, payAddressAll)
 	}
 	if isPayFlowRewards(number, period) {
 		log.Info("LockProfitSnap pay flow profit")
-		return s.FlowLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state,payAddressAll)
+		return s.FlowLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state, payAddressAll)
 	}
 	if isPayBandWidthRewards(number, period) {
 		log.Info("LockProfitSnap pay bandwidth profit")
-		return s.BandwidthLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state,payAddressAll)
+		return s.BandwidthLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state, payAddressAll)
 	}
 	return currentGrantProfit, playGrantProfit, nil
 }
