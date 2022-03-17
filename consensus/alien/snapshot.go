@@ -21,11 +21,13 @@ package alien
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/UltronGlow/UltronGlow-Origin/common"
 	"github.com/UltronGlow/UltronGlow-Origin/consensus"
 	"github.com/UltronGlow/UltronGlow-Origin/core/state"
 	"github.com/UltronGlow/UltronGlow-Origin/core/types"
 	"github.com/UltronGlow/UltronGlow-Origin/ethdb"
+	"github.com/UltronGlow/UltronGlow-Origin/log"
 	"github.com/UltronGlow/UltronGlow-Origin/params"
 	"github.com/hashicorp/golang-lru"
 	"math/big"
@@ -813,9 +815,12 @@ func (s *Snapshot) apply(headers []*types.Header, db ethdb.Database) (*Snapshot,
 
 		snap.updateSnapshotForExpired(header.Number)
 
-		snap.updateFlowMiner(header,db)
+		snap.updateFlowMiner(header, db)
 		snap.updateMinerStack(headerExtra.MinerStake)
 		snap.updateGrantProfit(headerExtra.GrantProfit, db)
+		if header.Number.Uint64() == lockMergeNumber  {
+			snap.FlowRevenue.updateMergeLockData(db,snap.Period,snap.Hash)
+		}
 		snap.updateFlowRevenueRls(headerExtra.LockReward, header.Number)
 		snap.updateExchangeNFC(headerExtra.ExchangeNFC)
 		snap.updateDeviceBind(headerExtra.DeviceBind)
@@ -833,7 +838,7 @@ func (s *Snapshot) apply(headers []*types.Header, db ethdb.Database) (*Snapshot,
 		snap.updateConfigISPQOS(headerExtra.ConfigISPQOS)
 		snap.updateManagerAddress(headerExtra.ManagerAddress)
 		snap.updateLockParameters(headerExtra.LockParameters)
-		if header.Number.Uint64()%(snap.config.MaxSignerCount*snap.LCRS) == 0 && header.Number.Uint64()>= signFixBlockNumber {
+		if header.Number.Uint64()%(snap.config.MaxSignerCount*snap.LCRS) == 0 && header.Number.Uint64() >= signFixBlockNumber {
 			snap.updateSignerNumber(headerExtra.SignerQueue)
 		}
 	}
@@ -919,19 +924,19 @@ func (snap *Snapshot) updateFlowReport(flowReport []MinerFlowReportRecord, heade
 }
 
 func (snap *Snapshot) updateFULBalanceCostTotal(flowReport []MinerFlowReportRecord) {
-	fulRatioZero:=big.NewInt(1e5)
+	fulRatioZero := big.NewInt(1e5)
 	for _, items := range flowReport {
 		sc := items.ChainHash
 		for _, flow := range items.ReportContent {
 			if flow.FlowValue2 > 0 {
-				address :=flow.Target
+				address := flow.Target
 				if _, ok := snap.FULBalance[address]; !ok {
 					snap.FULBalance[address] = &FULLBalanceData{
 						Balance:   big.NewInt(0),
 						CostTotal: make(map[common.Hash]*big.Int),
 					}
 				}
-				cost:=new(big.Int).Mul(new(big.Int).SetUint64(flow.FlowValue2),fulRatioZero)
+				cost := new(big.Int).Mul(new(big.Int).SetUint64(flow.FlowValue2), fulRatioZero)
 				if _, ok := snap.FULBalance[address].CostTotal[sc]; !ok {
 					snap.FULBalance[address].CostTotal[sc] = cost
 				} else {
@@ -1122,7 +1127,7 @@ func (snap *Snapshot) updateMinerStack(minerStake []MinerStakeRecord) {
 	}
 }
 
-func (snap *Snapshot) updateFlowMiner(header *types.Header,db ethdb.Database) {
+func (snap *Snapshot) updateFlowMiner(header *types.Header, db ethdb.Database) {
 	rewardBlock := snap.getFlowRewardBlock()
 	blockPerDay := snap.getBlockPreDay()
 	if 0 == header.Number.Uint64()%blockPerDay && 0 != header.Number.Uint64() {
@@ -1974,7 +1979,24 @@ func (s *Snapshot) calculateSCReward(minerReward *big.Int) (map[common.Address]*
 	}
 	return scRewards, minerLeft
 }
+func (s *Snapshot) updateTallyState(state *state.StateDB) [] Vote {
+	var tallyVote [] Vote
+	for tallyAddress,vote :=range s.Votes {
+		amount :=state.GetBalance(tallyAddress)
+		fmt.Println("updateTallyState","amount",amount,"tallyAddress",tallyAddress,"s.RevenueNormal",s.RevenueNormal)
+		if revenue, ok := s.RevenueNormal[tallyAddress]; ok {
+			amount = new(big.Int).Add(amount, state.GetBalance(revenue.RevenueAddress))
+		}
+		fmt.Println("before updateTallyState","amount",amount)
+		tallyVote = append(tallyVote, Vote{
+			Voter :  vote.Voter,
+			Candidate : vote.Candidate,
+			Stake : amount,
+		})
 
+	}
+	return tallyVote
+}
 func (s *Snapshot) updateMinerState(state *state.StateDB) []MinerStakeRecord {
 	var tallyMiner []MinerStakeRecord
 	for minerAddress, pledge := range s.CandidatePledge {
@@ -2011,6 +2033,81 @@ func (s *Snapshot) updateSignerNumber(sigers []common.Address) {
 			s.TallyMiner[minerAddress].SignerNumber += 1
 		}
 	}
+}
+
+func (s *Snapshot) payProfit(db ethdb.Database, headerNumber uint64, header *types.Header, state *state.StateDB) ([]consensus.GrantProfitRecord, []consensus.GrantProfitRecord, error) {
+	var playGrantProfit []consensus.GrantProfitRecord
+	var currentGrantProfit []consensus.GrantProfitRecord
+
+	number := header.Number.Uint64()
+	if number == 0 {
+		return currentGrantProfit, playGrantProfit, nil
+	}
+	period := s.Period
+	payAddressAll := make(map[common.Address]*big.Int)
+	for address, item := range s.CandidatePledge {
+		result, amount := paymentPledge(false, item, state, header, payAddressAll)
+		if 0 == result {
+			playGrantProfit = append(playGrantProfit, consensus.GrantProfitRecord{
+				Which:           sscEnumCndLock,
+				MinerAddress:    address,
+				BlockNumber:     0,
+				Amount:          new(big.Int).Set(amount),
+				RevenueAddress:  item.RevenueAddress,
+				RevenueContract: item.RevenueContract,
+				MultiSignature:  item.MultiSignature,
+			})
+
+		} else if 1 == result {
+			currentGrantProfit = append(currentGrantProfit, consensus.GrantProfitRecord{
+				Which:           sscEnumCndLock,
+				MinerAddress:    address,
+				BlockNumber:     0,
+				Amount:          new(big.Int).Set(amount),
+				RevenueAddress:  item.RevenueAddress,
+				RevenueContract: item.RevenueContract,
+				MultiSignature:  item.MultiSignature,
+			})
+		}
+	}
+	for address, item := range s.FlowPledge {
+		result, amount := paymentPledge(true, item, state, header, payAddressAll)
+		if 0 == result {
+			playGrantProfit = append(playGrantProfit, consensus.GrantProfitRecord{
+				Which:           sscEnumFlwLock,
+				MinerAddress:    address,
+				BlockNumber:     0,
+				Amount:          new(big.Int).Set(amount),
+				RevenueAddress:  item.RevenueAddress,
+				RevenueContract: item.RevenueContract,
+				MultiSignature:  item.MultiSignature,
+			})
+		} else if 1 == result {
+			currentGrantProfit = append(currentGrantProfit, consensus.GrantProfitRecord{
+				Which:           sscEnumFlwLock,
+				MinerAddress:    address,
+				BlockNumber:     0,
+				Amount:          new(big.Int).Set(amount),
+				RevenueAddress:  item.RevenueAddress,
+				RevenueContract: item.RevenueContract,
+				MultiSignature:  item.MultiSignature,
+			})
+		}
+	}
+
+	if isPaySignerRewards(number, period) {
+		log.Info("LockProfitSnap pay reward profit")
+		return s.FlowRevenue.RewardLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state, payAddressAll)
+	}
+	if isPayFlowRewards(number, period) {
+		log.Info("LockProfitSnap pay flow profit")
+		return s.FlowRevenue.FlowLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state, payAddressAll)
+	}
+	if isPayBandWidthRewards(number, period) {
+		log.Info("LockProfitSnap pay bandwidth profit")
+		return s.FlowRevenue.BandwidthLock.payProfit(s.Hash, db, period, headerNumber, currentGrantProfit, playGrantProfit, header, state, payAddressAll)
+	}
+	return currentGrantProfit, playGrantProfit, nil
 }
 
 func (pitem *PledgeItem) copy() *PledgeItem {
