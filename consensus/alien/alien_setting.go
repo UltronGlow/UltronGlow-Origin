@@ -28,6 +28,10 @@ const (
 	electionPartitionThreshold = 36 //Election partition threshold
 	signFixBlockNumber = 326630
 	grantProfitOneTimeBlockNumber=372842
+	lockSimplifyEffectBlocknumber = 380182
+	//ignoreExtraDataNumber         = 394125
+	lockMergeNumber = 397000
+	tallyRevenueEffectBlockNumber=516460
 )
 
 var (
@@ -85,4 +89,7 @@ func isPaySignerRewards(number uint64, period uint64) bool {
 	block := paySignerRewardInterval / period
 	blockPerDay := secondsPerDay / period
 	return block == number%blockPerDay && block != number
+}
+func  islockSimplifyEffectBlocknumber(number uint64) bool {
+	return number>=lockSimplifyEffectBlocknumber
 }
