@@ -118,6 +118,11 @@ web3._extend({
 			call: 'alien_getSnapshotFlowReportAtNumber',
 			params: 1
 		}),
+        new web3._extend.Method({
+			name: 'getLockRewardAtNumber',
+			call: 'alien_getLockRewardAtNumber',
+			params: 1
+		}),
 	]
 });
 `
