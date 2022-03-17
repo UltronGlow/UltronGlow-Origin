@@ -600,7 +600,7 @@ func (a *Alien) processCustomTx(headerExtra HeaderExtra, chain consensus.ChainHe
 		}
 		// check each address
 		if number > 1 {
-			headerExtra.ModifyPredecessorVotes = a.processPredecessorVoter(headerExtra.ModifyPredecessorVotes, state, tx, txSender, snap)
+			headerExtra.ModifyPredecessorVotes = a.processPredecessorVoter(headerExtra.ModifyPredecessorVotes, state, tx, txSender, snap,number)
 		}
 	}
 
@@ -867,13 +867,14 @@ func (a *Alien) processEventConfirm(currentBlockConfirmations []Confirmation, ch
 	return currentBlockConfirmations, refundHash
 }
 
-func (a *Alien) processPredecessorVoter(modifyPredecessorVotes []Vote, state *state.StateDB, tx *types.Transaction, voter common.Address, snap *Snapshot) []Vote {
+func (a *Alien) processPredecessorVoter(modifyPredecessorVotes []Vote, state *state.StateDB, tx *types.Transaction, voter common.Address, snap *Snapshot,number uint64) []Vote {
 	// process normal transaction which relate to voter
 	if tx.Value().Cmp(big.NewInt(0)) > 0 && tx.To() != nil {
 		if snap.isVoter(voter) {
 			a.lock.RLock()
 			stake := state.GetBalance(voter)
 			a.lock.RUnlock()
+			stake = a.addRevenueAddrBal(stake,voter,number,snap,state)
 			modifyPredecessorVotes = append(modifyPredecessorVotes, Vote{
 				Voter:     voter,
 				Candidate: common.Address{},
@@ -884,6 +885,7 @@ func (a *Alien) processPredecessorVoter(modifyPredecessorVotes []Vote, state *st
 			a.lock.RLock()
 			stake := state.GetBalance(*tx.To())
 			a.lock.RUnlock()
+			stake = a.addRevenueAddrBal(stake,*tx.To(),number,snap,state)
 			modifyPredecessorVotes = append(modifyPredecessorVotes, Vote{
 				Voter:     *tx.To(),
 				Candidate: common.Address{},
@@ -894,6 +896,8 @@ func (a *Alien) processPredecessorVoter(modifyPredecessorVotes []Vote, state *st
 	}
 	return modifyPredecessorVotes
 }
+
+
 
 func (a *Alien) addCustomerTxLog (tx *types.Transaction, receipts []*types.Receipt, topics []common.Hash, data []byte) bool {
 	for _, receipt := range receipts {
@@ -1968,4 +1972,14 @@ func (a *Alien) checkRevenueNormalBind (deviceBind DeviceBindRecord,snap *Snapsh
 		}
 	}
 	return nil
+}
+
+func (a *Alien) addRevenueAddrBal(stake *big.Int,voter common.Address,number uint64,snap *Snapshot,state *state.StateDB) *big.Int {
+	if number > tallyRevenueEffectBlockNumber{
+		if revenue, ok := snap.RevenueNormal[voter]; ok {
+			amount := state.GetBalance(revenue.RevenueAddress)
+			return new(big.Int).Add(stake,amount)
+		}
+	}
+	return stake
 }
