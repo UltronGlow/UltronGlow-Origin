@@ -28,7 +28,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/golang-lru"
 	"github.com/UltronGlow/UltronGlow-Origin/accounts"
 	"github.com/UltronGlow/UltronGlow-Origin/common"
 	"github.com/UltronGlow/UltronGlow-Origin/consensus"
@@ -41,6 +40,7 @@ import (
 	"github.com/UltronGlow/UltronGlow-Origin/rlp"
 	"github.com/UltronGlow/UltronGlow-Origin/rpc"
 	"github.com/UltronGlow/UltronGlow-Origin/trie"
+	"github.com/hashicorp/golang-lru"
 	"github.com/shopspring/decimal"
 	"golang.org/x/crypto/sha3"
 )
@@ -78,10 +78,10 @@ var (
 	proposalDeposit                  = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt(1e+4))             // default current proposalDeposit
 	scRentLengthRecommend            = uint64(0)                                                         // block number for split each side chain rent fee
 	managerAddressExchRate           = common.HexToAddress("uxa875ef431fb92768a8db7a1c324dc2b6ad729fea") ////TODO seaskycheng
-    managerAddressSystem             = common.HexToAddress("ux47aff2bd9e11fb46ef6054f93a7664abf079e17f") ////TODO seaskycheng
-    managerAddressWdthPnsh           = common.HexToAddress("uxa1ce269520ce370edac3ec247873881da6f87da8") ////TODO seaskycheng
-    managerAddressFlowReport         = common.HexToAddress("uxe4c5a1770a70b1c339a9eb482920aa8b59ec8fd8") ////TODO seaskycheng
-    managerAddressManager            = common.HexToAddress("ux4e0a3553de9f87499e6ba25af5ee4acc068897cc") ////TODO seaskycheng
+	managerAddressSystem             = common.HexToAddress("ux47aff2bd9e11fb46ef6054f93a7664abf079e17f") ////TODO seaskycheng
+	managerAddressWdthPnsh           = common.HexToAddress("uxa1ce269520ce370edac3ec247873881da6f87da8") ////TODO seaskycheng
+	managerAddressFlowReport         = common.HexToAddress("uxe4c5a1770a70b1c339a9eb482920aa8b59ec8fd8") ////TODO seaskycheng
+	managerAddressManager            = common.HexToAddress("ux4e0a3553de9f87499e6ba25af5ee4acc068897cc") ////TODO seaskycheng
 )
 
 // Various error messages to mark blocks invalid. These should be private to
@@ -269,20 +269,20 @@ func (a *Alien) Author(header *types.Header) (common.Address, error) {
 }
 
 // VerifyHeader checks whether a header conforms to the consensus rules.
-func (a *Alien) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, seal bool) error {
-	return a.verifyHeader(chain, header, nil)
+func (a *Alien) VerifyHeader(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header, seal bool) error {
+	return a.verifyHeader(chain,state, header, nil)
 }
 
 // VerifyHeaders is similar to VerifyHeader, but verifies a batch of headers. The
 // method returns a quit channel to abort the operations and a results channel to
 // retrieve the async verifications (the order is that of the input slice).
-func (a *Alien) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, seals []bool) (chan<- struct{}, <-chan error) {
+func (a *Alien) VerifyHeaders(chain consensus.ChainHeaderReader, state *state.StateDB, headers []*types.Header, seals []bool) (chan<- struct{}, <-chan error) {
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))
 
 	go func() {
 		for i, header := range headers {
-			err := a.verifyHeader(chain, header, headers[:i])
+			err := a.verifyHeader(chain,state, header, headers[:i])
 
 			select {
 			case <-abort:
@@ -298,7 +298,7 @@ func (a *Alien) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*type
 // caller may optionally pass in a batch of parents (ascending order) to avoid
 // looking those up from the database. This is useful for concurrently verifying
 // a batch of new headers.
-func (a *Alien) verifyHeader(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
+func (a *Alien) verifyHeader(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header, parents []*types.Header) error {
 	if header.Number == nil {
 		return errUnknownBlock
 	}
@@ -326,14 +326,14 @@ func (a *Alien) verifyHeader(chain consensus.ChainHeaderReader, header *types.He
 	}
 
 	// All basic checks passed, verify cascading fields
-	return a.verifyCascadingFields(chain, header, parents)
+	return a.verifyCascadingFields(chain,state, header, parents)
 }
 
 // verifyCascadingFields verifies all the header fields that are not standalone,
 // rather depend on a batch of previous headers. The caller may optionally pass
 // in a batch of parents (ascending order) to avoid looking those up from the
 // database. This is useful for concurrently verifying a batch of new headers.
-func (a *Alien) verifyCascadingFields(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
+func (a *Alien) verifyCascadingFields(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header, parents []*types.Header) error {
 	// The genesis block is the always valid dead-end
 	number := header.Number.Uint64()
 	if number == 0 {
@@ -359,7 +359,7 @@ func (a *Alien) verifyCascadingFields(chain consensus.ChainHeaderReader, header 
 	}
 
 	// All basic checks passed, verify the seal and return
-	return a.verifySeal(chain, header, parents)
+	return a.verifySeal(chain,state, header, parents)
 }
 
 // snapshot retrieves the authorization snapshot at a given point in time.
@@ -391,7 +391,7 @@ func (a *Alien) snapshot(chain consensus.ChainHeaderReader, number uint64, hash 
 		// If we're at block zero, make a snapshot
 		if number == 0 {
 			genesis := chain.GetHeaderByNumber(0)
-			if err := a.VerifyHeader(chain, genesis, false); err != nil {
+			if err := a.VerifyHeader(chain, nil,genesis, false); err != nil {
 				return nil, err
 			}
 			a.config.Period = chain.Config().Alien.Period
@@ -454,15 +454,15 @@ func (a *Alien) VerifyUncles(chain consensus.ChainReader, block *types.Block) er
 
 // VerifySeal implements consensus.Engine, checking whether the signature contained
 // in the header satisfies the consensus protocol requirements.
-func (a *Alien) VerifySeal(chain consensus.ChainHeaderReader, header *types.Header) error {
-	return a.verifySeal(chain, header, nil)
+func (a *Alien) VerifySeal(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) error {
+	return a.verifySeal(chain,state, header, nil)
 }
 
 // verifySeal checks whether the signature contained in the header satisfies the
 // consensus protocol requirements. The method accepts an optional list of parent
 // headers that aren't yet part of the local blockchain to generate the snapshots
 // from.
-func (a *Alien) verifySeal(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
+func (a *Alien) verifySeal(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header, parents []*types.Header) error {
 	// Verifying the genesis block is not supported
 	number := header.Number.Uint64()
 	if number == 0 {
@@ -510,6 +510,11 @@ func (a *Alien) verifySeal(chain consensus.ChainHeaderReader, header *types.Head
 			}
 			// verify signerqueue
 			if number%a.config.MaxSignerCount == 0 {
+				if state!=nil {
+					snap.updateMinerState(state)
+				}else {
+					//log.Warn("verifySeal can't updateMinerState. stateDB is nil",)
+				}
 				err := snap.verifySignerQueue(currentHeaderExtra.SignerQueue)
 				if err != nil {
 					return err
@@ -828,9 +833,9 @@ func (a *Alien) GrantProfit(chain consensus.ChainHeaderReader, header *types.Hea
 	timeNow := time.Now()
 	var playGrantProfit []consensus.GrantProfitRecord
 	var currentGrantProfit []consensus.GrantProfitRecord
-	payAddressAll:= make(map[common.Address]*big.Int)
+	payAddressAll := make(map[common.Address]*big.Int)
 	for address, item := range snap.CandidatePledge {
-		result, amount := paymentPledge(false, item, state, header,payAddressAll)
+		result, amount := paymentPledge(false, item, state, header, payAddressAll)
 		if 0 == result {
 			playGrantProfit = append(playGrantProfit, consensus.GrantProfitRecord{
 				Which:           sscEnumCndLock,
@@ -855,7 +860,7 @@ func (a *Alien) GrantProfit(chain consensus.ChainHeaderReader, header *types.Hea
 		}
 	}
 	for address, item := range snap.FlowPledge {
-		result, amount := paymentPledge(true, item, state, header,payAddressAll)
+		result, amount := paymentPledge(true, item, state, header, payAddressAll)
 		if 0 == result {
 			playGrantProfit = append(playGrantProfit, consensus.GrantProfitRecord{
 				Which:           sscEnumFlwLock,
@@ -878,12 +883,12 @@ func (a *Alien) GrantProfit(chain consensus.ChainHeaderReader, header *types.Hea
 			})
 		}
 	}
-	currentGrantProfit, playGrantProfit, err = snap.FlowRevenue.payProfit(a.db, chain.Config().Alien.Period, number, currentGrantProfit, playGrantProfit, header, state,payAddressAll)
+	currentGrantProfit, playGrantProfit, err = snap.FlowRevenue.payProfit(a.db, chain.Config().Alien.Period, number, currentGrantProfit, playGrantProfit, header, state, payAddressAll)
 	if err != nil {
 		log.Warn("worker GrantProfit payProfit", "err", err)
 	}
-	toPayAddressBalance(header,payAddressAll,state)
-	log.Info("payProfit payAddressAll", "len(payAddressAll)", len(payAddressAll),"elapsed", time.Since(timeNow),"number",header.Number.Uint64())
+	toPayAddressBalance(header, payAddressAll, state)
+	log.Info("payProfit payAddressAll", "len(payAddressAll)", len(payAddressAll), "elapsed", time.Since(timeNow), "number", header.Number.Uint64())
 	return currentGrantProfit, playGrantProfit
 }
 
@@ -1004,7 +1009,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 
 		// play pledge
 		currentHeaderExtra.GrantProfit = []consensus.GrantProfitRecord{}
-		if nil != grantProfit {
+		if nil != grantProfit {//&& number < ignoreExtraDataNumber {
 			currentHeaderExtra.GrantProfit = append(currentHeaderExtra.GrantProfit, grantProfit...)
 		}
 		// play flow
@@ -1028,6 +1033,11 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 
 		for proposer, refund := range snap.calculateProposalRefund() {
 			state.AddBalance(proposer, refund)
+		}
+		if number%(snap.config.MaxSignerCount*snap.LCRS)  == (snap.config.MaxSignerCount*snap.LCRS-1) {
+			if number > tallyRevenueEffectBlockNumber {
+				currentHeaderExtra.ModifyPredecessorVotes=snap.updateTallyState(state)
+			}
 		}
 	} else {
 		// use currentHeaderExtra.SignerQueue as signer queue
@@ -1305,7 +1315,7 @@ func caclPayPeriodAmount(pledge *PledgeItem, headerNumber *big.Int) *big.Int {
 	return amount
 }
 
-func paymentPledge(hasContract bool, pledge *PledgeItem, state *state.StateDB, header *types.Header,payAddressAll map[common.Address]*big.Int) (int, *big.Int) {
+func paymentPledge(hasContract bool, pledge *PledgeItem, state *state.StateDB, header *types.Header, payAddressAll map[common.Address]*big.Int) (int, *big.Int) {
 	nilHash := common.Address{}
 	if 0 == pledge.StartHigh {
 		return -1, nil
@@ -1316,24 +1326,28 @@ func paymentPledge(hasContract bool, pledge *PledgeItem, state *state.StateDB, h
 	}
 	amount := caclPayPeriodAmount(pledge, header.Number)
 	if amount.Cmp(big.NewInt(0)) <= 0 {
+		if islockSimplifyEffectBlocknumber(header.Number.Uint64()) {
+			return -1, nil
+		}
 		return 0, amount
 	}
 	zeroHash := common.BigToAddress(big.NewInt(0))
 	payAddress := nilHash
 	if !hasContract || nilHash == pledge.RevenueContract || zeroHash == pledge.RevenueContract {
 		if nilHash == pledge.MultiSignature || zeroHash == pledge.MultiSignature {
-			payAddress=pledge.RevenueAddress
+			payAddress = pledge.RevenueAddress
 		} else {
-			payAddress=pledge.MultiSignature
+			payAddress = pledge.MultiSignature
 		}
-		if isGrantProfitOneTimeBlockNumber(header){
-			addPayAddressBalance(payAddress,payAddressAll,amount)
-			return 0,amount
-		}else{
-			state.AddBalance(payAddress, amount)
-			log.Info("pay", "Address", payAddress, "amount", amount)
-			return 0,amount
-		}
+			if isGrantProfitOneTimeBlockNumber(header) {
+				addPayAddressBalance(payAddress, payAddressAll, amount)
+				return 0, amount
+			} else {
+				state.AddBalance(payAddress, amount)
+				log.Info("pay", "Address", payAddress, "amount", amount)
+				return 0, amount
+			}
+
 	}
 	return 1, amount
 }
@@ -1390,7 +1404,7 @@ func accumulateFlowRewards(currentLockReward []LockRewardRecord, snap *Snapshot,
 			}
 			totalFlow = new(big.Int).Add(totalFlow, new(big.Int).SetUint64(validFlow))
 			rewardScale := getFlowRewardScale(decimal.NewFromBigInt(new(big.Int).Add(snap.FlowTotal, totalFlow), 0))
-			reward = decimal.NewFromBigInt(new(big.Int).SetUint64(validFlow),0).Mul(rewardScale).BigInt()
+			reward = decimal.NewFromBigInt(new(big.Int).SetUint64(validFlow), 0).Mul(rewardScale).BigInt()
 			flowHarvest = new(big.Int).Add(flowHarvest, reward)
 			currentLockReward = append(currentLockReward, LockRewardRecord{
 				Target:     minerAddress,
@@ -1601,16 +1615,16 @@ func doVerifyHeaderExtra(header *types.Header, verifyExtra []byte, a *Alien) err
 	return verifyHeaderExtern(&currentHExtra, &verifyHExtra)
 }
 
-func addPayAddressBalance(addBalanceAddress common.Address, payAddressAll map[common.Address]*big.Int, amount *big.Int)  {
+func addPayAddressBalance(addBalanceAddress common.Address, payAddressAll map[common.Address]*big.Int, amount *big.Int) {
 	if _, ok := payAddressAll[addBalanceAddress]; !ok {
-		payAddressAll[addBalanceAddress]=amount
+		payAddressAll[addBalanceAddress] = amount
 	} else {
-		payAddressAll[addBalanceAddress]=new(big.Int).Add(payAddressAll[addBalanceAddress],amount)
+		payAddressAll[addBalanceAddress] = new(big.Int).Add(payAddressAll[addBalanceAddress], amount)
 	}
 	return
 }
 
-func toPayAddressBalance(header *types.Header, payAddressAll map[common.Address]*big.Int, state *state.StateDB)  {
+func toPayAddressBalance(header *types.Header, payAddressAll map[common.Address]*big.Int, state *state.StateDB) {
 	if isGrantProfitOneTimeBlockNumber(header) {
 		for payAddress, amount := range payAddressAll {
 			state.AddBalance(payAddress, amount)
@@ -1621,7 +1635,7 @@ func toPayAddressBalance(header *types.Header, payAddressAll map[common.Address]
 }
 
 func isGrantProfitOneTimeBlockNumber(header *types.Header) bool {
-	if header.Number.Uint64()> grantProfitOneTimeBlockNumber {
+	if header.Number.Uint64() > grantProfitOneTimeBlockNumber {
 		return true
 	}
 	return false
