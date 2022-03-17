@@ -345,7 +345,11 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	// The first thing the node will do is reconstruct the verification data for
 	// the head block (ethash cache or alien and clique voting snapshot). Might as well do
 	// it in advance.
-	bc.engine.VerifyHeader(bc, bc.CurrentHeader(), true)
+	state,err:=bc.State()
+	if err!=nil {
+		log.Warn("NewBlockChain Can't get StateDB","number", bc.CurrentHeader().Number.Uint64())
+	}
+	bc.engine.VerifyHeader(bc,state, bc.CurrentHeader(), true)
 
 	// Check the current state of the block hashes and make sure that we do not have any of the bad blocks in our chain
 	for hash := range BadHashes {
@@ -1692,7 +1696,11 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		headers[i] = block.Header()
 		seals[i] = verifySeals
 	}
-	abort, results := bc.engine.VerifyHeaders(bc, headers, seals)
+	stateDb,err:=bc.State()
+	if err!=nil {
+		log.Warn("insertChain Can't get StateDB","number", bc.CurrentHeader().Number.Uint64())
+	}
+	abort, results := bc.engine.VerifyHeaders(bc, stateDb, headers, seals)
 	defer close(abort)
 
 	// Peek the error for the first block to decide the directing import logic
