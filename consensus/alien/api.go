@@ -443,3 +443,22 @@ func (api *API) GetSnapshotFlowReportAtNumber(number uint64) (*SnapshotFlowRepor
 type SnapshotFlowReport struct {
 	FlowReport []MinerFlowReportRecord `json:"flowreport"`
 }
+
+
+func (api *API) GetLockRewardAtNumber(number uint64) ([]LockRewardRecord, error) {
+	header := api.chain.GetHeaderByNumber(number)
+	if header == nil {
+		return nil, errUnknownBlock
+	}
+	headerExtra := HeaderExtra{}
+	err := rlp.DecodeBytes(header.Extra[extraVanity:len(header.Extra)-extraSeal], &headerExtra)
+	if err != nil {
+		log.Info("Fail to decode header Extra", "err", err)
+		return nil,err
+	}
+	LockReward:=make([]LockRewardRecord,0)
+	if len(headerExtra.LockReward)>0 {
+		LockReward=append(LockReward,headerExtra.LockReward...)
+	}
+	return LockReward, err
+}
