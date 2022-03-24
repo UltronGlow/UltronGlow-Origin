@@ -32,6 +32,7 @@ const (
 	//ignoreExtraDataNumber         = 394125
 	lockMergeNumber = 397000
 	tallyRevenueEffectBlockNumber=516460
+	 SigerQueueFixBlockNumber = 591790
 )
 
 var (
