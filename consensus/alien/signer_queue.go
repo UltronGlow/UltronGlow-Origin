@@ -137,7 +137,18 @@ func (s *Snapshot) rebuildTallyMiner(miners TallySlice) TallySlice {
 		}
 	}
 	sort.Sort(tallySlice)
+	if (s.Number+1) >= SigerQueueFixBlockNumber {
+		tallySlice=tsReverse(tallySlice)
+	}
 	return tallySlice
+}
+func  tsReverse(s TallySlice) TallySlice {
+	var reverseSlice   TallySlice
+	minnerlen :=len(s)
+	for i, _ := range s {
+		reverseSlice =append(reverseSlice,s[minnerlen-1-i])
+	}
+	return reverseSlice
 }
 
 func (s *Snapshot) createSignerQueue() ([]common.Address, error) {
