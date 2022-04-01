@@ -32,15 +32,17 @@ const (
 	//ignoreExtraDataNumber         = 394125
 	lockMergeNumber = 397000
 	tallyRevenueEffectBlockNumber=516460
-	 SigerQueueFixBlockNumber = 591790
+	SigerQueueFixBlockNumber=591790
+
+	SigerElectNewEffectBlockNumber = 661874
 )
 
 var (
 	minCndPledgeBalance = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt(20)) // candidate pledge balance
-
 	minSignerLockBalance    = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt(0)) // signer reward lock balance
 	minFlwLockBalance       = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt(0)) // flow reward lock balance
 	minBandwidthLockBalance = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt(0)) // bandwidth reward lock balance
+	clearSignNumberPerid = uint64(60480)
 )
 
 func (a *Alien) blockPerDay() uint64 {
