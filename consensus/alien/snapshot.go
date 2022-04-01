@@ -21,7 +21,6 @@ package alien
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/UltronGlow/UltronGlow-Origin/common"
 	"github.com/UltronGlow/UltronGlow-Origin/consensus"
 	"github.com/UltronGlow/UltronGlow-Origin/core/state"
@@ -219,6 +218,7 @@ type Snapshot struct {
 	SCFlowPledge   map[common.Address]bool           `json:"scflowpledge"`
 	SCFULBalance   map[common.Address]*big.Int       `json:"fulbalance"`
 	SignerMissing  []common.Address                  `json:"signermissing"`
+	TallySigner       map[common.Address]uint64      `json:"tallySigner"`
 }
 
 var (
@@ -290,6 +290,7 @@ func newSnapshot(config *params.AlienConfig, sigcache *lru.ARCCache, hash common
 		SCFlowPledge:   make(map[common.Address]bool),
 		SCFULBalance:   make(map[common.Address]*big.Int),
 		SignerMissing:  []common.Address{},
+		TallySigner: make(map[common.Address]uint64),
 	}
 	snap.HistoryHash = append(snap.HistoryHash, hash)
 
@@ -495,6 +496,7 @@ func (s *Snapshot) copy() *Snapshot {
 		SCFlowPledge:   make(map[common.Address]bool),
 		SCFULBalance:   make(map[common.Address]*big.Int),
 		SignerMissing:  make([]common.Address, len(s.SignerMissing)),
+		TallySigner: make(map[common.Address]uint64),
 	}
 	copy(cpy.HistoryHash, s.HistoryHash)
 	copy(cpy.Signers, s.Signers)
@@ -505,6 +507,9 @@ func (s *Snapshot) copy() *Snapshot {
 			Candidate: vote.Candidate,
 			Stake:     new(big.Int).Set(vote.Stake),
 		}
+	}
+	for candidate,signNumber:=range s.TallySigner{
+		cpy.TallySigner[candidate]= signNumber
 	}
 	for candidate, tally := range s.Tally {
 		cpy.Tally[candidate] = new(big.Int).Set(tally)
@@ -839,7 +844,7 @@ func (s *Snapshot) apply(headers []*types.Header, db ethdb.Database) (*Snapshot,
 		snap.updateManagerAddress(headerExtra.ManagerAddress)
 		snap.updateLockParameters(headerExtra.LockParameters)
 		if header.Number.Uint64()%(snap.config.MaxSignerCount*snap.LCRS) == 0 && header.Number.Uint64() >= signFixBlockNumber {
-			snap.updateSignerNumber(headerExtra.SignerQueue)
+			snap.updateSignerNumber(headerExtra.SignerQueue,header.Number.Uint64())
 		}
 	}
 	snap.Number += uint64(len(headers))
@@ -1983,11 +1988,9 @@ func (s *Snapshot) updateTallyState(state *state.StateDB) [] Vote {
 	var tallyVote [] Vote
 	for tallyAddress,vote :=range s.Votes {
 		amount :=state.GetBalance(tallyAddress)
-		fmt.Println("updateTallyState","amount",amount,"tallyAddress",tallyAddress,"s.RevenueNormal",s.RevenueNormal)
 		if revenue, ok := s.RevenueNormal[tallyAddress]; ok {
 			amount = new(big.Int).Add(amount, state.GetBalance(revenue.RevenueAddress))
 		}
-		fmt.Println("before updateTallyState","amount",amount)
 		tallyVote = append(tallyVote, Vote{
 			Voter :  vote.Voter,
 			Candidate : vote.Candidate,
@@ -2027,10 +2030,31 @@ func (s *Snapshot) updateMinerState(state *state.StateDB) []MinerStakeRecord {
 	return tallyMiner
 }
 
-func (s *Snapshot) updateSignerNumber(sigers []common.Address) {
+func (s *Snapshot) updateSignerNumber(sigers []common.Address, headerNumber uint64) {
+
+
 	for _, minerAddress := range sigers {
 		if _, ok := s.TallyMiner[minerAddress]; ok {
 			s.TallyMiner[minerAddress].SignerNumber += 1
+		}
+		if headerNumber>=SigerElectNewEffectBlockNumber{
+			if _,ok := s.Tally[minerAddress];ok {
+				if _,isOk := s.TallySigner[minerAddress];isOk{
+					s.TallySigner[minerAddress] =s.TallySigner[minerAddress]+1
+				}else{
+					s.TallySigner[minerAddress]=1
+				}
+			}
+		}
+	}
+	if headerNumber>=SigerElectNewEffectBlockNumber {
+		if headerNumber%clearSignNumberPerid == 0 {
+			for address, _ := range s.TallySigner {
+				s.TallySigner[address] = 0
+			}
+			for address, _ := range s.TallyMiner {
+				s.TallyMiner[address].SignerNumber = 0
+			}
 		}
 	}
 }
