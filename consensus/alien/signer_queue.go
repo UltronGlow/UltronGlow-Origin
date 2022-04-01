@@ -20,6 +20,9 @@ package alien
 
 import (
 	"bytes"
+	"github.com/UltronGlow/UltronGlow-Origin/log"
+	"github.com/shopspring/decimal"
+	"math"
 	"math/big"
 	"sort"
 
@@ -81,6 +84,7 @@ func (s *Snapshot) verifySignerQueue(signerQueue []common.Address) error {
 	}
 	for i, signer := range signerQueue {
 		if signer != sq[i] {
+			log.Info("verifySignerQueue","sq",sq,"signerQueue",signerQueue)
 			return errInvalidSignerQueue
 		}
 	}
@@ -90,6 +94,14 @@ func (s *Snapshot) verifySignerQueue(signerQueue []common.Address) error {
 
 func (s *Snapshot) buildTallySlice() TallySlice {
 	var tallySlice TallySlice
+	if s.Number+1>= SigerElectNewEffectBlockNumber{
+		for address, stake := range s.Tally {
+			if !candidateNeedPD || s.isCandidate(address) {
+				tallySlice = append(tallySlice, TallyItem{address, stake})
+			}
+		}
+		return tallySlice
+	}
 	for address, stake := range s.Tally {
 		if !candidateNeedPD || s.isCandidate(address) {
 			if _, ok := s.Punished[address]; ok {
@@ -110,6 +122,15 @@ func (s *Snapshot) buildTallySlice() TallySlice {
 
 func (s *Snapshot) buildTallyMiner() TallySlice {
 	var tallySlice TallySlice
+	if s.Number+1>= SigerElectNewEffectBlockNumber{
+		for address, stake := range s.TallyMiner {
+			if pledge, ok := s.CandidatePledge[address]; !ok || 0 < pledge.StartHigh || s.Punished[address] >= minCalSignerQueueCredit {
+				continue
+			}
+			tallySlice = append(tallySlice, TallyItem{address, stake.Stake})
+		}
+		return tallySlice
+	}
 	for address, stake := range s.TallyMiner {
 		if pledge, ok := s.CandidatePledge[address]; !ok || 0 < pledge.StartHigh || s.Punished[address] >= minCalSignerQueueCredit {
 			continue
@@ -130,6 +151,9 @@ func (s *Snapshot) buildTallyMiner() TallySlice {
 }
 
 func (s *Snapshot) rebuildTallyMiner(miners TallySlice) TallySlice {
+	if s.Number+1>= SigerElectNewEffectBlockNumber{
+		return s.reBuildMiner(miners)
+	}
 	var tallySlice TallySlice
 	for _, item := range miners {
 		if status, ok := s.TallyMiner[item.addr]; ok {
@@ -150,7 +174,54 @@ func  tsReverse(s TallySlice) TallySlice {
 	}
 	return reverseSlice
 }
+func  (s *Snapshot)  reBuildMiner(miners TallySlice) TallySlice{
+	totalAmount :=big.NewInt(0)
+	for _, item := range miners {
+		if _, ok := s.TallyMiner[item.addr]; ok {
+			totalAmount= new(big.Int).Add(totalAmount,item.stake)
+		}
+	}
+	var tallySlice TallySlice
+	for _, item := range miners {
+		signerNumber :=uint64(0)
+		if status, ok := s.TallyMiner[item.addr]; ok {
+			signerNumber = status.SignerNumber
+		}
+		selectParam:=s.calculateMinerState(item,totalAmount,signerNumber)
+		tallySlice = append(tallySlice, TallyItem{item.addr,selectParam.BigInt() })
+	}
+	sort.Sort(tallySlice)
+	return tallySlice
+}
+func  (s *Snapshot)  reBuildMainMiner(miners TallySlice) TallySlice{
+	totalAmount :=big.NewInt(0)
+	for _, item := range miners {
+		totalAmount= new(big.Int).Add(totalAmount,item.stake)
+	}
+	var tallySlice TallySlice
+	for _, item := range miners {
+		signerNumber :=uint64(0)
+		if  count,ok := s.TallySigner[item.addr];ok {
+			signerNumber =count
+		}
+		selectParam:=s.calculateMinerState(item,totalAmount,signerNumber)
+		tallySlice = append(tallySlice, TallyItem{item.addr,selectParam.BigInt() })
 
+	}
+	sort.Sort(tallySlice)
+	return tallySlice
+}
+func (s *Snapshot) calculateMinerState(item TallyItem,totalAmount *big.Int,signerNumber uint64) decimal.Decimal{
+
+	sigerIndex :=  float64(1) /float64(signerNumber+1)
+	assetsRate :=decimal.NewFromBigInt(item.stake,0).Div(decimal.NewFromBigInt(totalAmount,0))
+	creditWeight := uint64(defaultFullCredit)
+	if _, ok := s.Punished[item.addr]; ok {
+		creditWeight =defaultFullCredit - s.Punished[item.addr]
+	}
+	assetsRate=assetsRate.Mul(decimal.NewFromFloat(float64(creditWeight)))
+	return decimal.NewFromFloat(math.Sqrt(sigerIndex )) .Mul(assetsRate).Mul(decimal.NewFromFloat(1e+18))
+}
 func (s *Snapshot) createSignerQueue() ([]common.Address, error) {
 
 	if (s.Number+1)%s.config.MaxSignerCount != 0 || s.Hash != s.HistoryHash[len(s.HistoryHash)-1] {
@@ -161,6 +232,7 @@ func (s *Snapshot) createSignerQueue() ([]common.Address, error) {
 	var topStakeAddress []common.Address
 
 	if (s.Number+1)%(s.config.MaxSignerCount*s.LCRS) == 0 {
+
 		// before recalculate the signers, clear the candidate is not in snap.Candidates
 		//log.Info("begin select node","blocknumbrt",s.Number)
 		// only recalculate signers from to tally per 10 loop,
@@ -183,13 +255,18 @@ func (s *Snapshot) createSignerQueue() ([]common.Address, error) {
 			} else {
 				mainMinerNumber = queueLength - secondMinerNumber
 				var candidatePledgeSlice TallySlice
-				if len(secondMinerSlice)+mainSignerSliceLen >= maxCandidateMiner {
-					for _, tallyItem := range secondMinerSlice[:maxCandidateMiner-mainSignerSliceLen] {
-						candidatePledgeSlice = append(candidatePledgeSlice, TallyItem{tallyItem.addr, tallyItem.stake})
-					}
-				} else {
+				if s.Number+1>= SigerElectNewEffectBlockNumber{
 					candidatePledgeSlice = secondMinerSlice
+				}else{
+					if len(secondMinerSlice)+mainSignerSliceLen >= maxCandidateMiner {
+						for _, tallyItem := range secondMinerSlice[:maxCandidateMiner-mainSignerSliceLen] {
+							candidatePledgeSlice = append(candidatePledgeSlice, TallyItem{tallyItem.addr, tallyItem.stake})
+						}
+					} else {
+						candidatePledgeSlice = secondMinerSlice
+					}
 				}
+
 				signerSlice = s.selectSecondMiner(candidatePledgeSlice, secondMinerNumber, signerSlice, queueLength)
 			}
 			// select Main Miner
@@ -219,6 +296,9 @@ func (s *Snapshot) createSignerQueue() ([]common.Address, error) {
 }
 
 func (s *Snapshot) selectMainMiner(mainMinerNumber int, mainSignerSliceLen int, signerSlice SignerSlice, mainMinerSlice TallySlice, secondMinerNumber int) SignerSlice {
+	if s.Number+1>SigerElectNewEffectBlockNumber {
+		mainMinerSlice=s.reBuildMainMiner(mainMinerSlice)
+	}
 	if mainMinerNumber > mainSignerSliceLen {
 		//mainSignerSliceLen := len(mainMinerSlice)
 		for i := 0; i < mainMinerNumber; i++ {
@@ -234,6 +314,9 @@ func (s *Snapshot) selectMainMiner(mainMinerNumber int, mainSignerSliceLen int, 
 
 func (s *Snapshot) selectSecondMiner(candidatePledgeSlice TallySlice, secondMinerNumber int, signerSlice SignerSlice, queueLength int) SignerSlice {
 	candidateLen := len(candidatePledgeSlice)
+	if s.Number+1>= SigerElectNewEffectBlockNumber{
+		return s.selectNewSecondMiner(candidatePledgeSlice,secondMinerNumber,signerSlice)
+	}
 	if candidateLen <= electionPartitionThreshold {
 		candidatePledgeSlice = s.rebuildTallyMiner(candidatePledgeSlice)
 		for i, tallyItem := range candidatePledgeSlice[:secondMinerNumber] {
@@ -241,7 +324,6 @@ func (s *Snapshot) selectSecondMiner(candidatePledgeSlice TallySlice, secondMine
 		}
 	} else {
 		var LevelSlice TallySlice
-
 		index := int(0)
 		firstNumber := 6 * queueLength / defaultOfficialMaxSignerCount
 		//Proportion of the second step  20%
@@ -282,6 +364,13 @@ func (s *Snapshot) selectSecondMiner(candidatePledgeSlice TallySlice, secondMine
 
 func (s *Snapshot) selectSecondMinerInsufficient(tallyMiner TallySlice, signerSlice SignerSlice) SignerSlice {
 	for i, tallyItem := range tallyMiner {
+		signerSlice = append(signerSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i]})
+	}
+	return signerSlice
+}
+func (s *Snapshot) selectNewSecondMiner(candidatePledgeSlice TallySlice, secondMinerNumber int, signerSlice SignerSlice) SignerSlice {
+	candidatePledgeSlice = s.rebuildTallyMiner(candidatePledgeSlice)
+	for i, tallyItem := range candidatePledgeSlice[:secondMinerNumber] {
 		signerSlice = append(signerSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i]})
 	}
 	return signerSlice
