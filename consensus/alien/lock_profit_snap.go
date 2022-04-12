@@ -9,6 +9,7 @@ import (
 	"github.com/UltronGlow/UltronGlow-Origin/ethdb"
 	"github.com/UltronGlow/UltronGlow-Origin/log"
 	"github.com/UltronGlow/UltronGlow-Origin/rlp"
+	"github.com/shopspring/decimal"
 	"math/big"
 	"time"
 )
@@ -346,6 +347,42 @@ func (s *LockData) mergeLockData(db ethdb.Database,period uint64,hash common.Has
 		for  lockNumber,pledgeItem := range rlsLockData.LockBalance {
 			bnumber :=  blockPerDay * (lockNumber / blockPerDay)+1
 			for locktype,item := range  pledgeItem {
+				if bnumber==1 {
+					if item.TargetAddress == common.HexToAddress("ux31f440fc8dd98bdbdb72ebd8a14a469439fc3433") && item.RevenueAddress==common.HexToAddress("ux31f440fc8dd98bdbdb72ebd8a14a469439fc3433"){
+                            continue
+					}
+					if item.TargetAddress == common.HexToAddress("ux82de6bd4b822c5af6110de34a133980c456708e0") && item.RevenueAddress!=common.HexToAddress("ux82de6bd4b822c5af6110de34a133980c456708e0"){
+						continue
+					}
+					if item.TargetAddress == common.HexToAddress("uxfeac212688fdc4d7f0f5af8caa02f981d55a7cf4") && item.RevenueAddress!=common.HexToAddress("uxfeac212688fdc4d7f0f5af8caa02f981d55a7cf4"){
+						continue
+					}
+				}
+				if bnumber == 43201 {
+					if item.TargetAddress == common.HexToAddress("uxa573d8c28a709acba1eb10e605694482a92c3593") &&item.RevenueAddress==common.HexToAddress("uxa573d8c28a709acba1eb10e605694482a92c3593"){
+						  continue
+					}
+					if item.TargetAddress== common.HexToAddress("uxd691ea3fd19437bbd27a590bfca3c435c9c07c38")&&item.RevenueAddress== common.HexToAddress("uxd691ea3fd19437bbd27a590bfca3c435c9c07c38"){
+						continue
+					}
+					if item.TargetAddress ==common.HexToAddress( "ux208bc40a411786f9ce7b4a3d1f8424a4f59406e8")&&item.RevenueAddress ==common.HexToAddress( "ux208bc40a411786f9ce7b4a3d1f8424a4f59406e8"){
+						continue
+
+					}
+					if item.TargetAddress == common.HexToAddress("ux7d51170f140c47e547664ead4d1185ef864ba689")&& item.RevenueAddress == common.HexToAddress("ux7d51170f140c47e547664ead4d1185ef864ba689"){
+						continue
+
+					}
+					if item.TargetAddress == common.HexToAddress("ux81ae1b55bb078102c965bb8a4faf48ecc4380f55")&&item.RevenueAddress == common.HexToAddress("ux81ae1b55bb078102c965bb8a4faf48ecc4380f55"){
+						continue
+
+					}
+					if item.TargetAddress == common.HexToAddress("uxf4955c8a120b1cdf3bfd7c6dc43837dd65360f01")&&item.RevenueAddress == common.HexToAddress("uxf4955c8a120b1cdf3bfd7c6dc43837dd65360f01"){
+						continue
+
+					}
+				}
+
 				hash :=common.HexToHash(item.TargetAddress.String()+item.RevenueAddress.String()+item.RevenueContract.String()+item.MultiSignature.String())
 				if _, ok := mergeRlsLkBalance[hash]; !ok {
 					mergeRlsLkBalance[hash] = &RlsLockData{
@@ -366,7 +403,71 @@ func (s *LockData) mergeLockData(db ethdb.Database,period uint64,hash common.Has
 			}
 		}
 	}
-	
+	for _,lockdata:=range mergeRlsLkBalance{
+		for blockNumber,items:=range lockdata.LockBalance{
+			item:=items[3]
+			if blockNumber==1 {
+				if item.TargetAddress == common.HexToAddress("ux31f440fc8dd98bdbdb72ebd8a14a469439fc3433") {
+					amount,_:=decimal.NewFromString("1441044761571428550400")
+					item.Amount=amount.BigInt()
+					playment,_:=decimal.NewFromString("112081259233333329136")
+					item.Playment=playment.BigInt()
+				}
+				if item.TargetAddress == common.HexToAddress("ux82de6bd4b822c5af6110de34a133980c456708e0"){
+					amount,_:=decimal.NewFromString("1442041061571428560400")
+					item.Amount=amount.BigInt()
+					playment,_:=decimal.NewFromString("112158749233333329912")
+					item.Playment=playment.BigInt()
+				}
+				if item.TargetAddress == common.HexToAddress("uxfeac212688fdc4d7f0f5af8caa02f981d55a7cf4"){
+					amount,_:=decimal.NewFromString("1436585442571428540400")
+					item.Amount=amount.BigInt()
+					playment,_:=decimal.NewFromString("111734423311111106144")
+					item.Playment=playment.BigInt()
+				}
+			}
+			if blockNumber == 43201 {
+				if item.TargetAddress == common.HexToAddress("uxa573d8c28a709acba1eb10e605694482a92c3593"){
+					amount,_:=decimal.NewFromString("411699799999999460000")
+					item.Amount=amount.BigInt()
+					playment,_:=decimal.NewFromString("20584989999999973000")
+					item.Playment=playment.BigInt()
+				}
+				if item.TargetAddress== common.HexToAddress("uxd691ea3fd19437bbd27a590bfca3c435c9c07c38"){
+					amount,_:=decimal.NewFromString("411721999999999400000")
+					item.Amount=amount.BigInt()
+					playment,_:=decimal.NewFromString("20586099999999970000")
+					item.Playment=playment.BigInt()
+				}
+				if item.TargetAddress ==common.HexToAddress( "ux208bc40a411786f9ce7b4a3d1f8424a4f59406e8"){
+					amount,_:=decimal.NewFromString("411251599999999320000")
+					item.Amount=amount.BigInt()
+					playment,_:=decimal.NewFromString("20562579999999966000")
+					item.Playment=playment.BigInt()
+				}
+				if item.TargetAddress == common.HexToAddress("ux7d51170f140c47e547664ead4d1185ef864ba689"){
+					amount,_:=decimal.NewFromString("411773799999999260000")
+					item.Amount=amount.BigInt()
+					playment,_:=decimal.NewFromString("20588689999999963000")
+					item.Playment=playment.BigInt()
+				}
+				if item.TargetAddress == common.HexToAddress("ux81ae1b55bb078102c965bb8a4faf48ecc4380f55"){
+					amount,_:=decimal.NewFromString("411274561142856400800")
+					item.Amount=amount.BigInt()
+					playment,_:=decimal.NewFromString("20563728057142820040")
+					item.Playment=playment.BigInt()
+				}
+				if item.TargetAddress == common.HexToAddress("uxf4955c8a120b1cdf3bfd7c6dc43837dd65360f01"){
+					amount,_:=decimal.NewFromString("411273799999999260000")
+					item.Amount=amount.BigInt()
+					playment,_:=decimal.NewFromString("20563689999999963000")
+					item.Playment=playment.BigInt()
+
+				}
+			}
+
+		}
+     }
 	return s.saveMereCacheL2(db,mergeRlsLkBalance,hash)
 }
 
