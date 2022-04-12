@@ -1450,16 +1450,20 @@ func (a *Alien) processCandidatePunish (currentCandidatePunish []CandidatePunish
 		log.Warn("Candidate punish", "balance", state.GetBalance(txSender))
 		return currentCandidatePunish
 	}
-	if pledgeItem, ok := snap.CandidatePledge[candidatePunish.Target]; !ok {
-		log.Warn("Candidate punish", "candidate isnot exist", candidatePunish.Target)
-		return currentCandidatePunish
-	} else {
-		if pledgeItem.StartHigh > 0 {
-			log.Warn("Candidate punish", "candidate already exit", pledgeItem.StartHigh)
-			return currentCandidatePunish
-		}
-		pledgeItem.Amount = new(big.Int).Add(pledgeItem.Amount, candidatePunish.Amount)
-	}
+	   if pledgeItem, ok := snap.CandidatePledge[candidatePunish.Target]; !ok {
+		   if snap.Number < TallyPunishdProcessEffectBlockNumber {
+			   log.Warn("Candidate punish", "candidate isnot exist", candidatePunish.Target)
+			   return currentCandidatePunish
+		   }
+	   } else {
+		   if pledgeItem.StartHigh > 0 {
+			   log.Warn("Candidate punish", "candidate already exit", pledgeItem.StartHigh)
+			   return currentCandidatePunish
+		   }
+		   pledgeItem.Amount = new(big.Int).Add(pledgeItem.Amount, candidatePunish.Amount)
+	   }
+
+
 	state.SetBalance(txSender, new(big.Int).Sub(state.GetBalance(txSender), candidatePunish.Amount))
 	topics := make([]common.Hash, 3)
 	topics[0].UnmarshalText([]byte("0xd67fe14bb06aa8656e0e7c3230831d68e8ce49bb4a4f71448f98a998d2674621")) //web3.sha3("PledgePunish(address,uint32)")
