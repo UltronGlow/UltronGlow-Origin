@@ -127,6 +127,11 @@ func (s *Snapshot) buildTallyMiner() TallySlice {
 			if pledge, ok := s.CandidatePledge[address]; !ok || 0 < pledge.StartHigh || s.Punished[address] >= minCalSignerQueueCredit {
 				continue
 			}
+			if s.Number+1> TallyPunishdFixBlockNumber {
+				if _, isok := s.Tally[address]; isok{
+                                    continue
+				}
+			}
 			tallySlice = append(tallySlice, TallyItem{address, stake.Stake})
 		}
 		return tallySlice
