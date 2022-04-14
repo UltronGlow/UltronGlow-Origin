@@ -37,6 +37,7 @@ const (
 	SigerElectNewEffectBlockNumber = 661874
 	MinerUpdateStateFixBlockNumber = 757054
     TallyPunishdProcessEffectBlockNumber = 757114
+	TallyPunishdFixBlockNumber =774331
 )
 
 var (
