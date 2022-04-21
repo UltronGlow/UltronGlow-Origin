@@ -761,7 +761,7 @@ func (s *Snapshot) updateStorageData(pledgeRecord []SPledgeRecord, db ethdb.Data
 		}
 		s.StorageData.StoragePledge[record.Address] = storagepledge
 		s.StorageData.accumulateSpaceStorageFileHash(record.Address, storageFile[record.RootHash]) //update file -->  space -- pledge
-		log.Info("storage pledge save successfully!", "s.StorageData.StoragePledge", s.StorageData.StoragePledge)
+		//log.Info("storage pledge save successfully!", "s.StorageData.StoragePledge", s.StorageData.StoragePledge)
 	}
 	s.StorageData.accumulateHeaderHash() //update all  to header valid root
 }
