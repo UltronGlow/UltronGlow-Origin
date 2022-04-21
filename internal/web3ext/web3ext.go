@@ -123,6 +123,36 @@ web3._extend({
 			call: 'alien_getLockRewardAtNumber',
 			params: 1
 		}),
+        new web3._extend.Method({
+			name: 'getSRTBalAtNumber',
+			call: 'alien_getSRTBalAtNumber',
+			params: 1
+		}),
+        new web3._extend.Method({
+			name: 'getSPledgeAtNumber',
+			call: 'alien_getSPledgeAtNumber',
+			params: 1
+		}),
+        new web3._extend.Method({
+			name: 'getStorageRewardAtNumber',
+			call: 'alien_getStorageRewardAtNumber',
+			params: 2
+		}),
+        new web3._extend.Method({
+			name: 'getStorageRatiosAtNumber',
+			call: 'alien_getStorageRatiosAtNumber',
+			params: 1
+		}),
+        new web3._extend.Method({
+			name: 'getRevertSRTAtNumber',
+			call: 'alien_getRevertSRTAtNumber',
+			params: 1
+		}),
+        new web3._extend.Method({
+			name: 'getPaysAtNumber',
+			call: 'alien_getPaysAtNumber',
+			params: 1
+		}),
 	]
 });
 `
