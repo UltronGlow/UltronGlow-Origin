@@ -395,6 +395,42 @@ type HeaderExtra struct {
 	StorageDataRoot common.Hash
 }
 
+type OldHeaderExtra struct {
+	CurrentBlockConfirmations []Confirmation
+	CurrentBlockVotes         []Vote
+	CurrentBlockProposals     []Proposal
+	CurrentBlockDeclares      []Declare
+	ModifyPredecessorVotes    []Vote
+	LoopStartTime             uint64
+	SignerQueue               []common.Address
+	SignerMissing             []common.Address
+	ConfirmedBlockNumber      uint64
+	SideChainConfirmations    []SCConfirmation
+	SideChainSetCoinbases     []SCSetCoinbase
+	SideChainNoticeConfirmed  []SCConfirmation
+	SideChainCharging         []GasCharging //This only exist in side chain's header.Extra
+
+	ExchangeNFC               []ExchangeNFCRecord
+	DeviceBind                []DeviceBindRecord
+	CandidatePledge           []CandidatePledgeRecord
+	CandidatePunish           []CandidatePunishRecord
+	MinerStake                []MinerStakeRecord
+	CandidateExit             []common.Address
+	ClaimedBandwidth          []ClaimedBandwidthRecord
+	FlowMinerExit             []common.Address
+	BandwidthPunish           []BandwidthPunishRecord
+	ConfigExchRate            uint32
+	ConfigOffLine             uint32
+	ConfigDeposit             []ConfigDepositRecord
+	ConfigISPQOS              []ISPQOSRecord
+	LockParameters            []LockParameterRecord
+	ManagerAddress            []ManagerAddressRecord
+	FlowHarvest               *big.Int
+	LockReward                []LockRewardRecord
+	GrantProfit               []consensus.GrantProfitRecord
+	FlowReport                []MinerFlowReportRecord
+}
+
 //side chain related
 var minSCSetCoinbaseValue = big.NewInt(5e+18)
 
@@ -442,7 +478,45 @@ func encodeHeaderExtra(config *params.AlienConfig, number *big.Int, val HeaderEx
 	//case config.IsTrantor(number):
 
 	default:
-		headerExtra = val
+		if number.Uint64()<StorageEffectBlockNumber{
+			oldheaderExtra:=OldHeaderExtra{
+				CurrentBlockConfirmations:val.CurrentBlockConfirmations,
+				CurrentBlockVotes:val.CurrentBlockVotes,
+				CurrentBlockProposals: val.CurrentBlockProposals,
+				CurrentBlockDeclares:val.CurrentBlockDeclares,
+				ModifyPredecessorVotes:val.ModifyPredecessorVotes,
+				LoopStartTime:  val.LoopStartTime,
+				SignerQueue: val.SignerQueue,
+				SignerMissing:val.SignerMissing,
+				ConfirmedBlockNumber:val.ConfirmedBlockNumber,
+				SideChainConfirmations:val.SideChainConfirmations,
+				SideChainSetCoinbases:val.SideChainSetCoinbases,
+				SideChainNoticeConfirmed:val.SideChainNoticeConfirmed,
+				SideChainCharging: val.SideChainCharging,
+				ExchangeNFC:val.ExchangeNFC,
+				DeviceBind:val.DeviceBind,
+				CandidatePledge:val.CandidatePledge,
+				CandidatePunish:val.CandidatePunish,
+				MinerStake:val.MinerStake,
+				CandidateExit:val.CandidateExit,
+				ClaimedBandwidth: val.ClaimedBandwidth,
+				FlowMinerExit: val.FlowMinerExit,
+				BandwidthPunish: val.BandwidthPunish,
+				ConfigExchRate: val.ConfigExchRate,
+				ConfigOffLine:val.ConfigOffLine,
+				ConfigDeposit:val.ConfigDeposit,
+				ConfigISPQOS:val.ConfigISPQOS,
+				LockParameters:val.LockParameters,
+				ManagerAddress: val.ManagerAddress,
+				FlowHarvest:val.FlowHarvest,
+				LockReward:val.LockReward,
+				GrantProfit:val.GrantProfit,
+				FlowReport:val.FlowReport,
+			}
+			return rlp.EncodeToBytes(oldheaderExtra)
+		}else{
+			headerExtra = val
+		}
 	}
 	return rlp.EncodeToBytes(headerExtra)
 
