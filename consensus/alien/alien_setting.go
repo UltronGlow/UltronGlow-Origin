@@ -33,11 +33,16 @@ const (
 	lockMergeNumber = 397000
 	tallyRevenueEffectBlockNumber=516460
 	SigerQueueFixBlockNumber=591790
-
 	SigerElectNewEffectBlockNumber = 661874
 	MinerUpdateStateFixBlockNumber = 757054
-    TallyPunishdProcessEffectBlockNumber = 757114
+	TallyPunishdProcessEffectBlockNumber = 757114
 	TallyPunishdFixBlockNumber =774331
+	StorageEffectBlockNumber=834261
+	//storage
+	storageVerificationCheck    = 1 * 60 * 60   //return funds where contract expiration
+	rentRenewalExpires=95
+	rentFailToRescind=10
+	maxStgVerContinueDayFail      =30    //storage Verification failed and failed for 7 consecutive days
 )
 
 var (
@@ -45,7 +50,11 @@ var (
 	minSignerLockBalance    = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt(0)) // signer reward lock balance
 	minFlwLockBalance       = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt(0)) // flow reward lock balance
 	minBandwidthLockBalance = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt(0)) // bandwidth reward lock balance
+	baseStoragePrice = new(big.Int).Mul(big.NewInt(1e+14), big.NewInt(5))
 	clearSignNumberPerid = uint64(60480)
+	storagePledgeIndex    = big.NewInt(1)
+	defaultLeaseExpires=big.NewInt(1)
+	minimumRentDay=big.NewInt(30)
 )
 
 func (a *Alien) blockPerDay() uint64 {
@@ -98,4 +107,10 @@ func isPaySignerRewards(number uint64, period uint64) bool {
 }
 func  islockSimplifyEffectBlocknumber(number uint64) bool {
 	return number>=lockSimplifyEffectBlocknumber
+}
+
+func isStorageVerificationCheck(number uint64, period uint64) bool {
+	block := storageVerificationCheck / period
+	blockPerDay := secondsPerDay / period
+	return block == number%blockPerDay && block != number
 }

@@ -176,12 +176,22 @@ func (s *LockData) updateLockData(snap *Snapshot, item LockRewardRecord, headerN
 			multiSignature = revenue.MultiSignature
 		}
 	} else {
-		// flow or bandwidth reward
-		if revenue, ok := snap.RevenueFlow[item.Target]; ok {
-			revenueAddress = revenue.RevenueAddress
-			revenueContract = revenue.RevenueContract
-			multiSignature = revenue.MultiSignature
+		if headerNumber.Uint64() >= StorageEffectBlockNumber {
+			// flow or bandwidth reward
+			if revenue, ok := snap.RevenueStorage[item.Target]; ok {
+				revenueAddress = revenue.RevenueAddress
+				revenueContract = revenue.RevenueContract
+				multiSignature = revenue.MultiSignature
+			}
+		}else{
+			// flow or bandwidth reward
+			if revenue, ok := snap.RevenueFlow[item.Target]; ok {
+				revenueAddress = revenue.RevenueAddress
+				revenueContract = revenue.RevenueContract
+				multiSignature = revenue.MultiSignature
+			}
 		}
+
 	}
 	if _, ok := lockBalance[item.IsReward]; !ok {
 		lockBalance[item.IsReward] = &PledgeItem{

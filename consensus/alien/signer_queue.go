@@ -129,7 +129,7 @@ func (s *Snapshot) buildTallyMiner() TallySlice {
 			}
 			if s.Number+1> TallyPunishdFixBlockNumber {
 				if _, isok := s.Tally[address]; isok{
-                                    continue
+					continue
 				}
 			}
 			tallySlice = append(tallySlice, TallyItem{address, stake.Stake})

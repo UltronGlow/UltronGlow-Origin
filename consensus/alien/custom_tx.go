@@ -132,6 +132,12 @@ const (
 	sscEnumWdthPnsh       = 2
 	sscEnumFlowReport     = 3
 
+	sscEnumStoragePrice        = 9
+	
+	sscEnumPStoragePledgeID = 6
+	sscEnumLeaseExpires = 7
+	sscEnumMinimumRent  = 8
+	sscEnumStoragePkPer        = 10 //Packaging bolocknumber per GB
 	/*
 	 *  proposal type
 	 */
@@ -371,6 +377,22 @@ type HeaderExtra struct {
 	LockReward                []LockRewardRecord
 	GrantProfit               []consensus.GrantProfitRecord
 	FlowReport                []MinerFlowReportRecord
+
+	StoragePledge       [] SPledgeRecord
+	StoragePledgeExit   [] SPledgeExitRecord
+	LeaseRequest        []LeaseRequestRecord
+	ExchangeSRT         []ExchangeSRTRecord
+	LeasePledge         []LeasePledgeRecord
+	LeaseRenewal        []LeaseRenewalRecord
+	LeaseRenewalPledge  []LeaseRenewalPledgeRecord
+	LeaseRescind        []LeaseRescindRecord
+	StorageRecoveryData [] SPledgeRecoveryRecord
+	StorageProofRecord  [] StorageProofRecord
+
+	StorageExchangePrice [] StorageExchangePriceRecord
+	ExtraStateRoot common.Hash
+	LockAccountsRoot common.Hash
+	StorageDataRoot common.Hash
 }
 
 //side chain related
@@ -552,15 +574,17 @@ func (a *Alien) processCustomTx(headerExtra HeaderExtra, chain consensus.ChainHe
 				} else if txDataInfo[posPrefix] == utgPrefix {
 					if txDataInfo[posVersion] == ufoVersion {
 						if txDataInfo[posCategory] == nfcCategoryExch {
-							headerExtra.ExchangeNFC = a.processExchangeNFC (headerExtra.ExchangeNFC, txDataInfo, txSender, tx, receipts, state, snap)
+							if number<StorageEffectBlockNumber{
+								headerExtra.ExchangeNFC = a.processExchangeNFC (headerExtra.ExchangeNFC, txDataInfo, txSender, tx, receipts, state, snap)
+							}
 						} else if txDataInfo[posCategory] == nfcCategoryMultiSign {
 							a.processCreateMultiSignature (txDataInfo, txSender, tx, receipts, state)
 						} else if txDataInfo[posCategory] == nfcCategoryBind {
-							headerExtra.DeviceBind = a.processDeviceBind (headerExtra.DeviceBind, txDataInfo, txSender, tx, receipts, snapCache)
+							headerExtra.DeviceBind = a.processDeviceBind (headerExtra.DeviceBind, txDataInfo, txSender, tx, receipts, snapCache,number)
 						} else if txDataInfo[posCategory] == nfcCategoryUnbind {
-							headerExtra.DeviceBind = a.processDeviceUnbind (headerExtra.DeviceBind, txDataInfo, txSender, tx, receipts, state, snapCache)
+							headerExtra.DeviceBind = a.processDeviceUnbind (headerExtra.DeviceBind, txDataInfo, txSender, tx, receipts, state, snapCache,number)
 						} else if txDataInfo[posCategory] == nfcCategoryRebind {
-							headerExtra.DeviceBind = a.processDeviceRebind (headerExtra.DeviceBind, txDataInfo, txSender, tx, receipts, state, snapCache)
+							headerExtra.DeviceBind = a.processDeviceRebind (headerExtra.DeviceBind, txDataInfo, txSender, tx, receipts, state, snapCache,number)
 						} else if txDataInfo[posCategory] == nfcCategoryCandReq {
 							headerExtra.CandidatePledge = a.processCandidatePledge (headerExtra.CandidatePledge, txDataInfo, txSender, tx, receipts, state, snapCache)
 						} else if txDataInfo[posCategory] == nfcCategoryCandExit {
@@ -572,6 +596,9 @@ func (a *Alien) processCustomTx(headerExtra HeaderExtra, chain consensus.ChainHe
 						} else if txDataInfo[posCategory] == nfcCategoryFlwExit {
 							headerExtra.FlowMinerExit = a.processMinerExit (headerExtra.FlowMinerExit, txDataInfo, txSender, tx, receipts, state, snapCache)
 						}
+						if header.Number.Uint64() > StorageEffectBlockNumber {
+							headerExtra=a.processStorageCustomTx(txDataInfo,headerExtra,txSender, tx, receipts, snapCache, header.Number,state,chain)
+                        }
 					}
 				}  else if txDataInfo[posPrefix] == sscPrefix {
 					if txDataInfo[posVersion] == ufoVersion {
@@ -1064,7 +1091,7 @@ func (a *Alien) processExchangeNFC (currentExchangeNFC []ExchangeNFCRecord, txDa
 	return currentExchangeNFC
 }
 
-func (a *Alien) processDeviceBind (currentDeviceBind []DeviceBindRecord, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, snap *Snapshot) []DeviceBindRecord {
+func (a *Alien) processDeviceBind(currentDeviceBind []DeviceBindRecord, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, snap *Snapshot, number uint64) []DeviceBindRecord {
 	if len(txDataInfo) <= nfcPosMiltiSign {
 		log.Warn("Device bind revenue", "parameter number", len(txDataInfo))
 		return currentDeviceBind
@@ -1088,9 +1115,16 @@ func (a *Alien) processDeviceBind (currentDeviceBind []DeviceBindRecord, txDataI
 				return currentDeviceBind
 			}
 		} else {
-			if _, ok := snap.RevenueFlow[deviceBind.Device]; ok {
-				log.Warn("Device bind revenue", "device already bond", txDataInfo[nfcPosMinerAddress])
-				return currentDeviceBind
+			if number >=StorageEffectBlockNumber {
+				if _, ok := snap.RevenueStorage[deviceBind.Device]; ok {
+					log.Warn("Device bind revenue", "device already bond", txDataInfo[nfcPosMinerAddress])
+					return currentDeviceBind
+				}
+			}else {
+				if _, ok := snap.RevenueFlow[deviceBind.Device]; ok {
+					log.Warn("Device bind revenue", "device already bond", txDataInfo[nfcPosMinerAddress])
+					return currentDeviceBind
+				}
 			}
 		}
 		deviceBind.Type = uint32(revenueType)
@@ -1110,7 +1144,16 @@ func (a *Alien) processDeviceBind (currentDeviceBind []DeviceBindRecord, txDataI
 			return currentDeviceBind
 		}
 	}
-
+	if number >=StorageEffectBlockNumber {
+		if len(txDataInfo) > nfcPosRevenueAddress {
+			if 0 < len(txDataInfo[nfcPosRevenueAddress]) {
+				if err := deviceBind.Revenue.UnmarshalText1([]byte(txDataInfo[nfcPosRevenueAddress])); err != nil {
+					log.Warn("Device bind revenue", "Revenue address", txDataInfo[nfcPosRevenueAddress])
+					return currentDeviceBind
+				}
+			}
+		}
+	}
 	if err := a.checkRevenueNormalBind(deviceBind,snap); err != nil {
 		log.Warn("Device bind revenue", "checkRevenueNormalBind", err.Error())
 		return currentDeviceBind
@@ -1137,16 +1180,25 @@ func (a *Alien) processDeviceBind (currentDeviceBind []DeviceBindRecord, txDataI
 			MultiSignature: deviceBind.MultiSign,
 		}
 	} else {
-		snap.RevenueFlow[deviceBind.Device] = &RevenueParameter{
-			RevenueAddress: deviceBind.Revenue,
-			RevenueContract: deviceBind.Contract,
-			MultiSignature: deviceBind.MultiSign,
+		if number >=StorageEffectBlockNumber {
+			snap.RevenueStorage[deviceBind.Device] = &RevenueParameter{
+				RevenueAddress: deviceBind.Revenue,
+				RevenueContract: deviceBind.Contract,
+				MultiSignature: deviceBind.MultiSign,
+			}
+		}else{
+			snap.RevenueFlow[deviceBind.Device] = &RevenueParameter{
+				RevenueAddress: deviceBind.Revenue,
+				RevenueContract: deviceBind.Contract,
+				MultiSignature: deviceBind.MultiSign,
+			}
 		}
+
 	}
 	return currentDeviceBind
 }
 
-func (a *Alien) processDeviceUnbind (currentDeviceBind []DeviceBindRecord, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, state *state.StateDB, snap *Snapshot) []DeviceBindRecord {
+func (a *Alien) processDeviceUnbind(currentDeviceBind []DeviceBindRecord, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, state *state.StateDB, snap *Snapshot, number uint64) []DeviceBindRecord {
 	if len(txDataInfo) <= nfcPosRevenueType {
 		log.Warn("Device unbind revenue", "parameter number", len(txDataInfo))
 		return currentDeviceBind
@@ -1184,22 +1236,42 @@ func (a *Alien) processDeviceUnbind (currentDeviceBind []DeviceBindRecord, txDat
 				}
 			}
 		} else {
-			if oldBind, ok := snap.RevenueFlow[deviceBind.Device]; !ok {
-				log.Warn("Device unbind revenue", "device never bond", txDataInfo[nfcPosMinerAddress])
-				return currentDeviceBind
-			} else {
-				if oldBind.MultiSignature == nilHash || oldBind.MultiSignature == zeroHash {
-					if oldBind.RevenueAddress != txSender {
-						log.Warn("Device unbind revenue", "revenue address", oldBind.RevenueAddress)
-						return currentDeviceBind
-					}
+			if number >=StorageEffectBlockNumber {
+				if oldBind, ok := snap.RevenueStorage[deviceBind.Device]; !ok {
+					log.Warn("Device unbind revenue", "device never bond", txDataInfo[nfcPosMinerAddress])
+					return currentDeviceBind
 				} else {
-					if !a.verifyMultiSignatureAddress(state, oldBind.MultiSignature, tx.AllSigners()) {
-						log.Warn("Device unbind revenue failed to verify multi-signature")
-						return currentDeviceBind
+					if oldBind.MultiSignature == nilHash || oldBind.MultiSignature == zeroHash {
+						if oldBind.RevenueAddress != txSender {
+							log.Warn("Device unbind revenue", "revenue address", oldBind.RevenueAddress)
+							return currentDeviceBind
+						}
+					} else {
+						if !a.verifyMultiSignatureAddress(state, oldBind.MultiSignature, tx.AllSigners()) {
+							log.Warn("Device unbind revenue failed to verify multi-signature")
+							return currentDeviceBind
+						}
+					}
+				}
+			}else{
+				if oldBind, ok := snap.RevenueFlow[deviceBind.Device]; !ok {
+					log.Warn("Device unbind revenue", "device never bond", txDataInfo[nfcPosMinerAddress])
+					return currentDeviceBind
+				} else {
+					if oldBind.MultiSignature == nilHash || oldBind.MultiSignature == zeroHash {
+						if oldBind.RevenueAddress != txSender {
+							log.Warn("Device unbind revenue", "revenue address", oldBind.RevenueAddress)
+							return currentDeviceBind
+						}
+					} else {
+						if !a.verifyMultiSignatureAddress(state, oldBind.MultiSignature, tx.AllSigners()) {
+							log.Warn("Device unbind revenue failed to verify multi-signature")
+							return currentDeviceBind
+						}
 					}
 				}
 			}
+
 		}
 		deviceBind.Type = uint32(revenueType)
 	} else {
@@ -1216,12 +1288,16 @@ func (a *Alien) processDeviceUnbind (currentDeviceBind []DeviceBindRecord, txDat
 	if deviceBind.Type == 0 {
 		delete(snap.RevenueNormal, deviceBind.Device)
 	} else {
-		delete(snap.RevenueFlow, deviceBind.Device)
+		if number >=StorageEffectBlockNumber {
+			delete(snap.RevenueStorage, deviceBind.Device)
+		}else{
+			delete(snap.RevenueFlow, deviceBind.Device)
+		}
 	}
 	return currentDeviceBind
 }
 
-func (a *Alien) processDeviceRebind (currentDeviceBind []DeviceBindRecord, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, state *state.StateDB, snap *Snapshot) []DeviceBindRecord {
+func (a *Alien) processDeviceRebind(currentDeviceBind []DeviceBindRecord, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, state *state.StateDB, snap *Snapshot, number uint64) []DeviceBindRecord {
 	if len(txDataInfo) <= nfcPosRevenueAddress {
 		log.Warn("Device rebind revenue", "parameter number", len(txDataInfo))
 		return currentDeviceBind
@@ -1263,22 +1339,42 @@ func (a *Alien) processDeviceRebind (currentDeviceBind []DeviceBindRecord, txDat
 				return currentDeviceBind
 			}
 		} else {
-			if oldBind, ok := snap.RevenueFlow[deviceBind.Device]; ok {
-				if oldBind.MultiSignature == nilHash || oldBind.MultiSignature == zeroHash {
-					if oldBind.RevenueAddress != txSender {
-						log.Warn("Device rebind revenue", "revenue address", oldBind.RevenueAddress)
-						return currentDeviceBind
+			if number >=StorageEffectBlockNumber {
+				if oldBind, ok := snap.RevenueStorage[deviceBind.Device]; ok {
+					if oldBind.MultiSignature == nilHash || oldBind.MultiSignature == zeroHash {
+						if oldBind.RevenueAddress != txSender {
+							log.Warn("Device rebind revenue", "revenue address", oldBind.RevenueAddress)
+							return currentDeviceBind
+						}
+					} else {
+						if !a.verifyMultiSignatureAddress(state, oldBind.MultiSignature, tx.AllSigners()) {
+							log.Warn("Device rebind revenue failed to verify multi-signature")
+							return currentDeviceBind
+						}
 					}
-				} else {
-					if !a.verifyMultiSignatureAddress(state, oldBind.MultiSignature, tx.AllSigners()) {
-						log.Warn("Device rebind revenue failed to verify multi-signature")
-						return currentDeviceBind
-					}
+				} else if deviceBind.Revenue != txSender {
+					log.Warn("Device rebind revenue", "device cnnnot bind", deviceBind.Revenue)
+					return currentDeviceBind
 				}
-			} else if deviceBind.Revenue != txSender {
-				log.Warn("Device rebind revenue", "device cnnnot bind", deviceBind.Revenue)
-				return currentDeviceBind
+			}else{
+				if oldBind, ok := snap.RevenueFlow[deviceBind.Device]; ok {
+					if oldBind.MultiSignature == nilHash || oldBind.MultiSignature == zeroHash {
+						if oldBind.RevenueAddress != txSender {
+							log.Warn("Device rebind revenue", "revenue address", oldBind.RevenueAddress)
+							return currentDeviceBind
+						}
+					} else {
+						if !a.verifyMultiSignatureAddress(state, oldBind.MultiSignature, tx.AllSigners()) {
+							log.Warn("Device rebind revenue failed to verify multi-signature")
+							return currentDeviceBind
+						}
+					}
+				} else if deviceBind.Revenue != txSender {
+					log.Warn("Device rebind revenue", "device cnnnot bind", deviceBind.Revenue)
+					return currentDeviceBind
+				}
 			}
+
 		}
 		deviceBind.Type = uint32(revenueType)
 	} else {
@@ -1324,10 +1420,18 @@ func (a *Alien) processDeviceRebind (currentDeviceBind []DeviceBindRecord, txDat
 			MultiSignature: deviceBind.MultiSign,
 		}
 	} else {
-		snap.RevenueFlow[deviceBind.Device] = &RevenueParameter{
-			RevenueAddress: deviceBind.Revenue,
-			RevenueContract: deviceBind.Contract,
-			MultiSignature: deviceBind.MultiSign,
+		if number >=StorageEffectBlockNumber {
+			snap.RevenueStorage[deviceBind.Device] = &RevenueParameter{
+				RevenueAddress: deviceBind.Revenue,
+				RevenueContract: deviceBind.Contract,
+				MultiSignature: deviceBind.MultiSign,
+			}
+		}else{
+			snap.RevenueFlow[deviceBind.Device] = &RevenueParameter{
+				RevenueAddress: deviceBind.Revenue,
+				RevenueContract: deviceBind.Contract,
+				MultiSignature: deviceBind.MultiSign,
+			}
 		}
 	}
 	return currentDeviceBind

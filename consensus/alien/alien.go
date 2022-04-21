@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/UltronGlow/UltronGlow-Origin/consensus/alien/extrastate"
 	"io"
 	"math"
 	"math/big"
@@ -249,7 +250,7 @@ func New(config *params.AlienConfig, db ethdb.Database) *Alien {
 	if conf.MinVoterBalance.Uint64() > 0 {
 		minVoterBalance = conf.MinVoterBalance
 	}
-
+	extrastate.InitExtraDB("")
 	// Allocate the snapshot caches and create the engine
 	recents, _ := lru.NewARC(inMemorySnapshots)
 	signatures, _ := lru.NewARC(inMemorySignatures)
@@ -270,7 +271,7 @@ func (a *Alien) Author(header *types.Header) (common.Address, error) {
 
 // VerifyHeader checks whether a header conforms to the consensus rules.
 func (a *Alien) VerifyHeader(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header, seal bool) error {
-	return a.verifyHeader(chain,state, header, nil)
+	return a.verifyHeader(chain, state, header, nil)
 }
 
 // VerifyHeaders is similar to VerifyHeader, but verifies a batch of headers. The
@@ -282,7 +283,7 @@ func (a *Alien) VerifyHeaders(chain consensus.ChainHeaderReader, state *state.St
 
 	go func() {
 		for i, header := range headers {
-			err := a.verifyHeader(chain,state, header, headers[:i])
+			err := a.verifyHeader(chain, state, header, headers[:i])
 
 			select {
 			case <-abort:
@@ -326,7 +327,7 @@ func (a *Alien) verifyHeader(chain consensus.ChainHeaderReader, state *state.Sta
 	}
 
 	// All basic checks passed, verify cascading fields
-	return a.verifyCascadingFields(chain,state, header, parents)
+	return a.verifyCascadingFields(chain, state, header, parents)
 }
 
 // verifyCascadingFields verifies all the header fields that are not standalone,
@@ -359,7 +360,7 @@ func (a *Alien) verifyCascadingFields(chain consensus.ChainHeaderReader, state *
 	}
 
 	// All basic checks passed, verify the seal and return
-	return a.verifySeal(chain,state, header, parents)
+	return a.verifySeal(chain, state, header, parents)
 }
 
 // snapshot retrieves the authorization snapshot at a given point in time.
@@ -391,7 +392,7 @@ func (a *Alien) snapshot(chain consensus.ChainHeaderReader, number uint64, hash 
 		// If we're at block zero, make a snapshot
 		if number == 0 {
 			genesis := chain.GetHeaderByNumber(0)
-			if err := a.VerifyHeader(chain, nil,genesis, false); err != nil {
+			if err := a.VerifyHeader(chain, nil, genesis, false); err != nil {
 				return nil, err
 			}
 			a.config.Period = chain.Config().Alien.Period
@@ -440,6 +441,7 @@ func (a *Alien) snapshot(chain consensus.ChainHeaderReader, number uint64, hash 
 		}
 		log.Trace("Stored voting snapshot to disk", "number", snap.Number, "hash", snap.Hash)
 	}
+
 	return snap, err
 }
 
@@ -455,7 +457,7 @@ func (a *Alien) VerifyUncles(chain consensus.ChainReader, block *types.Block) er
 // VerifySeal implements consensus.Engine, checking whether the signature contained
 // in the header satisfies the consensus protocol requirements.
 func (a *Alien) VerifySeal(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) error {
-	return a.verifySeal(chain,state, header, nil)
+	return a.verifySeal(chain, state, header, nil)
 }
 
 // verifySeal checks whether the signature contained in the header satisfies the
@@ -510,102 +512,100 @@ func (a *Alien) verifySeal(chain consensus.ChainHeaderReader, state *state.State
 			}
 			// verify signerqueue
 			if number%a.config.MaxSignerCount == 0 {
-				if number< MinerUpdateStateFixBlockNumber{
-					if state!=nil {
+				if number < MinerUpdateStateFixBlockNumber {
+					if state != nil {
 						snap.updateMinerState(state)
-					}else {
-						log.Warn("verifySeal can't updateMinerState. stateDB is nil",)
+					} else {
+						log.Debug("verifySeal can't updateMinerState. stateDB is nil")
 					}
 				}
-				if number==436380{
-					signerAmount,_ :=decimal.NewFromString("131992067200000021440")
-					snap.TallyMiner[common.HexToAddress("uxC8e3eD55F098D713F2371213A150C13c851c1F2F")].Stake=signerAmount.BigInt()
-					snap.TallyMiner[common.HexToAddress("uxbaa0f130C8ec0553922B509213592A6bA97f5CaB")].Stake=signerAmount.BigInt()
+				if number == 436380 {
+					signerAmount, _ := decimal.NewFromString("131992067200000021440")
+					snap.TallyMiner[common.HexToAddress("uxC8e3eD55F098D713F2371213A150C13c851c1F2F")].Stake = signerAmount.BigInt()
+					snap.TallyMiner[common.HexToAddress("uxbaa0f130C8ec0553922B509213592A6bA97f5CaB")].Stake = signerAmount.BigInt()
 
 				}
-				if number==516180{
-					signerAmount,_ :=decimal.NewFromString("131992067200000021440")
-					snap.TallyMiner[common.HexToAddress("uxbaa0f130C8ec0553922B509213592A6bA97f5CaB")].Stake=signerAmount.BigInt()
+				if number == 516180 {
+					signerAmount, _ := decimal.NewFromString("131992067200000021440")
+					snap.TallyMiner[common.HexToAddress("uxbaa0f130C8ec0553922B509213592A6bA97f5CaB")].Stake = signerAmount.BigInt()
 
 				}
-				if number==533400 {
-					signerAmount,_ :=decimal.NewFromString("11856996147771428581840")
-					snap.TallyMiner[common.HexToAddress("uxAcd59aFB9912393C9Ba22798f345c08fAF3f5808")].Stake=signerAmount.BigInt()
-					snap.TallyMiner[common.HexToAddress("uxAcd59aFB9912393C9Ba22798f345c08fAF3f5808")].SignerNumber=1
+				if number == 533400 {
+					signerAmount, _ := decimal.NewFromString("11856996147771428581840")
+					snap.TallyMiner[common.HexToAddress("uxAcd59aFB9912393C9Ba22798f345c08fAF3f5808")].Stake = signerAmount.BigInt()
+					snap.TallyMiner[common.HexToAddress("uxAcd59aFB9912393C9Ba22798f345c08fAF3f5808")].SignerNumber = 1
 				}
-				if number==552930 {
-					signerAmount,_ :=decimal.NewFromString("11019996147771428581840")
-					snap.TallyMiner[common.HexToAddress("uxD21e573c8E1c59BCdcD3Ac5047fF466A459Be64D")].Stake=signerAmount.BigInt()
-					snap.TallyMiner[common.HexToAddress("uxD21e573c8E1c59BCdcD3Ac5047fF466A459Be64D")].SignerNumber=1
+				if number == 552930 {
+					signerAmount, _ := decimal.NewFromString("11019996147771428581840")
+					snap.TallyMiner[common.HexToAddress("uxD21e573c8E1c59BCdcD3Ac5047fF466A459Be64D")].Stake = signerAmount.BigInt()
+					snap.TallyMiner[common.HexToAddress("uxD21e573c8E1c59BCdcD3Ac5047fF466A459Be64D")].SignerNumber = 1
 				}
-				if number==553140 {
-					signerAmount,_ :=decimal.NewFromString("10378292067200000021440")
-					snap.TallyMiner[common.HexToAddress("uxD88f6d70E8A88457F4af83b752A25AF5E089cAc8")].Stake=signerAmount.BigInt()
-					snap.TallyMiner[common.HexToAddress("uxD88f6d70E8A88457F4af83b752A25AF5E089cAc8")].SignerNumber=1
+				if number == 553140 {
+					signerAmount, _ := decimal.NewFromString("10378292067200000021440")
+					snap.TallyMiner[common.HexToAddress("uxD88f6d70E8A88457F4af83b752A25AF5E089cAc8")].Stake = signerAmount.BigInt()
+					snap.TallyMiner[common.HexToAddress("uxD88f6d70E8A88457F4af83b752A25AF5E089cAc8")].SignerNumber = 1
 
 				}
-				if number==557550 {
-					signerAmount,_ :=decimal.NewFromString("32988367200000031440")
-					snap.TallyMiner[common.HexToAddress("uxbaa0f130C8ec0553922B509213592A6bA97f5CaB")].Stake=signerAmount.BigInt()
-					snap.TallyMiner[common.HexToAddress("uxbaa0f130C8ec0553922B509213592A6bA97f5CaB")].SignerNumber=690
-					signerAmountCab,_ :=decimal.NewFromString("32984667200000041440")
-					snap.TallyMiner[common.HexToAddress("uxC8e3eD55F098D713F2371213A150C13c851c1F2F")].Stake=signerAmountCab.BigInt()
-					snap.TallyMiner[common.HexToAddress("uxC8e3eD55F098D713F2371213A150C13c851c1F2F")].SignerNumber=690
+				if number == 557550 {
+					signerAmount, _ := decimal.NewFromString("32988367200000031440")
+					snap.TallyMiner[common.HexToAddress("uxbaa0f130C8ec0553922B509213592A6bA97f5CaB")].Stake = signerAmount.BigInt()
+					snap.TallyMiner[common.HexToAddress("uxbaa0f130C8ec0553922B509213592A6bA97f5CaB")].SignerNumber = 690
+					signerAmountCab, _ := decimal.NewFromString("32984667200000041440")
+					snap.TallyMiner[common.HexToAddress("uxC8e3eD55F098D713F2371213A150C13c851c1F2F")].Stake = signerAmountCab.BigInt()
+					snap.TallyMiner[common.HexToAddress("uxC8e3eD55F098D713F2371213A150C13c851c1F2F")].SignerNumber = 690
 				}
-				if number==568260 {
+				if number == 568260 {
 
-					signerAmount,_ :=decimal.NewFromString("12022988212152380984240")
-					snap.TallyMiner[common.HexToAddress("uxC7FB1bA673895DF62967Aea3051D9BE751cA0b7d")].Stake=signerAmount.BigInt()
-					snap.TallyMiner[common.HexToAddress("uxC7FB1bA673895DF62967Aea3051D9BE751cA0b7d")].SignerNumber=2
-					signerAmountCab,_ :=decimal.NewFromString("12022987865409523842320")
-					snap.TallyMiner[common.HexToAddress("uxc106002714833c3c5A2c98cB5BaC6043A21Ca956")].Stake=signerAmountCab.BigInt()
-					snap.TallyMiner[common.HexToAddress("uxc106002714833c3c5A2c98cB5BaC6043A21Ca956")].SignerNumber=43
+					signerAmount, _ := decimal.NewFromString("12022988212152380984240")
+					snap.TallyMiner[common.HexToAddress("uxC7FB1bA673895DF62967Aea3051D9BE751cA0b7d")].Stake = signerAmount.BigInt()
+					snap.TallyMiner[common.HexToAddress("uxC7FB1bA673895DF62967Aea3051D9BE751cA0b7d")].SignerNumber = 2
+					signerAmountCab, _ := decimal.NewFromString("12022987865409523842320")
+					snap.TallyMiner[common.HexToAddress("uxc106002714833c3c5A2c98cB5BaC6043A21Ca956")].Stake = signerAmountCab.BigInt()
+					snap.TallyMiner[common.HexToAddress("uxc106002714833c3c5A2c98cB5BaC6043A21Ca956")].SignerNumber = 43
 				}
-				if number==623490 {
-					snap.TallyMiner[common.HexToAddress("ux7c34c6d1B75188b30F8839308e97Cd97F7f7940D")].SignerNumber=331
+				if number == 623490 {
+					snap.TallyMiner[common.HexToAddress("ux7c34c6d1B75188b30F8839308e97Cd97F7f7940D")].SignerNumber = 331
 				}
-				if number==632100 {
-					snap.TallyMiner[common.HexToAddress("ux869218917baF38a6005c1e58C95C03855b9B5766")].SignerNumber=358
+				if number == 632100 {
+					snap.TallyMiner[common.HexToAddress("ux869218917baF38a6005c1e58C95C03855b9B5766")].SignerNumber = 358
 				}
-				if number==661500 {
-					snap.TallyMiner[common.HexToAddress("uxE91D46DB9DeF6478EFC0F19F0456e9DA7F1ea9e1")].SignerNumber=445
+				if number == 661500 {
+					snap.TallyMiner[common.HexToAddress("uxE91D46DB9DeF6478EFC0F19F0456e9DA7F1ea9e1")].SignerNumber = 445
 				}
-				if number==664020 {
-					snap.TallyMiner[common.HexToAddress("uxCbdAE0BD89cF926e506066c7708257B23D9B7ad5")].SignerNumber=452
+				if number == 664020 {
+					snap.TallyMiner[common.HexToAddress("uxCbdAE0BD89cF926e506066c7708257B23D9B7ad5")].SignerNumber = 452
 				}
-				if number==668640 {
-					snap.TallyMiner[common.HexToAddress("uxc8e3ed55f098d713f2371213a150c13c851c1f2f")].SignerNumber=14
-					snap.TallyMiner[common.HexToAddress("uxbaa0f130c8ec0553922b509213592a6ba97f5cab")].SignerNumber=14
-					snap.TallyMiner[common.HexToAddress("uxc106002714833c3c5a2c98cb5bac6043a21ca956")].SignerNumber=11
-					snap.TallyMiner[common.HexToAddress("uxd21e573c8e1c59bcdcd3ac5047ff466a459be64d")].SignerNumber=11
-					snap.TallyMiner[common.HexToAddress("uxcbdae0bd89cf926e506066c7708257b23d9b7ad5")].SignerNumber=9
-					snap.TallyMiner[common.HexToAddress("uxacd59afb9912393c9ba22798f345c08faf3f5808")].SignerNumber=9
-					snap.TallyMiner[common.HexToAddress("ux869218917baf38a6005c1e58c95c03855b9b5766")].SignerNumber=11
-					snap.TallyMiner[common.HexToAddress("ux14d753c58680b5b4a1101f328424d8f9f712a099")].SignerNumber=15
-					snap.TallyMiner[common.HexToAddress("uxe91d46db9def6478efc0f19f0456e9da7f1ea9e1")].SignerNumber=9
-					snap.TallyMiner[common.HexToAddress("ux16f4ea2537fcee413cdb374a42c1d8ac7a0f4d2d")].SignerNumber=15
-					snap.TallyMiner[common.HexToAddress("uxd5ea8da79866bbf60cd7aeecede31b353d031ffc")].SignerNumber=9
-					snap.TallyMiner[common.HexToAddress("ux32f0765303403068e64314ed251c63a6dd8de9c7")].SignerNumber=15
-					c7state,_:=decimal.NewFromString("15895400212152380984240")
-					snap.TallyMiner[common.HexToAddress("ux32f0765303403068e64314ed251c63a6dd8de9c7")].Stake=c7state.BigInt()
-					c40dstate,_:=decimal.NewFromString("11730972949828571501680")
-					snap.TallyMiner[common.HexToAddress("ux7c34c6d1B75188b30F8839308e97Cd97F7f7940D")].Stake=c40dstate.BigInt()
-					snap.TallyMiner[common.HexToAddress("ux7c34c6d1b75188b30f8839308e97cd97f7f7940d")].SignerNumber=8
-					snap.TallyMiner[common.HexToAddress("uxC7FB1bA673895DF62967Aea3051D9BE751cA0b7d")].SignerNumber=11
-					snap.TallyMiner[common.HexToAddress("uxF688d260E215a600E0833D3eA6C2BbF5BD9335Ea")].SignerNumber=10
-					snap.TallyMiner[common.HexToAddress("uxD88f6d70E8A88457F4af83b752A25AF5E089cAc8")].SignerNumber=9
+				if number == 668640 {
+					snap.TallyMiner[common.HexToAddress("uxc8e3ed55f098d713f2371213a150c13c851c1f2f")].SignerNumber = 14
+					snap.TallyMiner[common.HexToAddress("uxbaa0f130c8ec0553922b509213592a6ba97f5cab")].SignerNumber = 14
+					snap.TallyMiner[common.HexToAddress("uxc106002714833c3c5a2c98cb5bac6043a21ca956")].SignerNumber = 11
+					snap.TallyMiner[common.HexToAddress("uxd21e573c8e1c59bcdcd3ac5047ff466a459be64d")].SignerNumber = 11
+					snap.TallyMiner[common.HexToAddress("uxcbdae0bd89cf926e506066c7708257b23d9b7ad5")].SignerNumber = 9
+					snap.TallyMiner[common.HexToAddress("uxacd59afb9912393c9ba22798f345c08faf3f5808")].SignerNumber = 9
+					snap.TallyMiner[common.HexToAddress("ux869218917baf38a6005c1e58c95c03855b9b5766")].SignerNumber = 11
+					snap.TallyMiner[common.HexToAddress("ux14d753c58680b5b4a1101f328424d8f9f712a099")].SignerNumber = 15
+					snap.TallyMiner[common.HexToAddress("uxe91d46db9def6478efc0f19f0456e9da7f1ea9e1")].SignerNumber = 9
+					snap.TallyMiner[common.HexToAddress("ux16f4ea2537fcee413cdb374a42c1d8ac7a0f4d2d")].SignerNumber = 15
+					snap.TallyMiner[common.HexToAddress("uxd5ea8da79866bbf60cd7aeecede31b353d031ffc")].SignerNumber = 9
+					snap.TallyMiner[common.HexToAddress("ux32f0765303403068e64314ed251c63a6dd8de9c7")].SignerNumber = 15
+					c7state, _ := decimal.NewFromString("15895400212152380984240")
+					snap.TallyMiner[common.HexToAddress("ux32f0765303403068e64314ed251c63a6dd8de9c7")].Stake = c7state.BigInt()
+					c40dstate, _ := decimal.NewFromString("11730972949828571501680")
+					snap.TallyMiner[common.HexToAddress("ux7c34c6d1B75188b30F8839308e97Cd97F7f7940D")].Stake = c40dstate.BigInt()
+					snap.TallyMiner[common.HexToAddress("ux7c34c6d1b75188b30f8839308e97cd97f7f7940d")].SignerNumber = 8
+					snap.TallyMiner[common.HexToAddress("uxC7FB1bA673895DF62967Aea3051D9BE751cA0b7d")].SignerNumber = 11
+					snap.TallyMiner[common.HexToAddress("uxF688d260E215a600E0833D3eA6C2BbF5BD9335Ea")].SignerNumber = 10
+					snap.TallyMiner[common.HexToAddress("uxD88f6d70E8A88457F4af83b752A25AF5E089cAc8")].SignerNumber = 9
 
-					}
-
+				}
 
 				err := snap.verifySignerQueue(currentHeaderExtra.SignerQueue)
-					if err != nil {
-						if number>=MinerUpdateStateFixBlockNumber{
-							return err
-						}
-
+				if err != nil {
+					if number >= MinerUpdateStateFixBlockNumber {
+						return err
 					}
-				
+
+				}
 
 			} else {
 				for i := 0; i < int(a.config.MaxSignerCount); i++ {
@@ -749,6 +749,19 @@ func (a *Alien) Prepare(chain consensus.ChainHeaderReader, header *types.Header)
 
 	// Set the correct difficulty
 	header.Difficulty = new(big.Int).Set(defaultDifficulty)
+
+	number := header.Number.Uint64()
+	if number >= StorageEffectBlockNumber {
+		// Ensure the timestamp has the correct delay
+		parent := chain.GetHeader(header.ParentHash, number-1)
+		if parent == nil {
+			return consensus.ErrUnknownAncestor
+		}
+		header.Time = parent.Time + uint64(a.config.Period)
+		if header.Time < uint64(time.Now().Unix()) {
+			header.Time = uint64(time.Now().Unix())
+		}
+	}
 	// If now is later than genesis timestamp, skip prepare
 	if a.config.GenesisTimestamp < uint64(time.Now().Unix()) {
 		return nil
@@ -1065,6 +1078,14 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 		return err
 	}
 	if !chain.Config().Alien.SideChain {
+		var es LockState
+		if number >= StorageEffectBlockNumber {
+			es, err = NewLockState(parentHeaderExtra.ExtraStateRoot, parentHeaderExtra.LockAccountsRoot, number)
+			if err != nil {
+				//log.Error("extrastate open failed", "root", parent.MixDigest, "err", err)
+				return err
+			}
+		}
 		// calculate votes write into header.extra
 		mcCurrentHeaderExtra, refundGas, err := a.processCustomTx(currentHeaderExtra, chain, header, state, txs, receipts)
 		if err != nil {
@@ -1085,7 +1106,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 			currentHeaderExtra.LoopStartTime = currentHeaderExtra.LoopStartTime + a.config.Period*a.config.MaxSignerCount
 			// create random signersQueue in currentHeaderExtra by snapshot.Tall
 			snap1 := snap.copy()
-			if number< MinerUpdateStateFixBlockNumber{
+			if number < MinerUpdateStateFixBlockNumber {
 				currentHeaderExtra.MinerStake = snap1.updateMinerState(state)
 			}
 			currentHeaderExtra.SignerQueue = []common.Address{}
@@ -1098,7 +1119,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 
 		// play pledge
 		currentHeaderExtra.GrantProfit = []consensus.GrantProfitRecord{}
-		if nil != grantProfit {//&& number < ignoreExtraDataNumber {
+		if nil != grantProfit { //&& number < ignoreExtraDataNumber {
 			currentHeaderExtra.GrantProfit = append(currentHeaderExtra.GrantProfit, grantProfit...)
 		}
 		// play flow
@@ -1123,11 +1144,54 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 		for proposer, refund := range snap.calculateProposalRefund() {
 			state.AddBalance(proposer, refund)
 		}
-		if number%(snap.config.MaxSignerCount*snap.LCRS)  == (snap.config.MaxSignerCount*snap.LCRS-1) {
-			if number > tallyRevenueEffectBlockNumber {
-				currentHeaderExtra.ModifyPredecessorVotes=snap.updateTallyState(state)
+		if es!=nil {
+			//es.LoadLockAccounts(parentHeaderExtra.LockAccountsRoot)
+			// process extrastate grantlist
+
+			//snap.updateLockRevenueRls(currentHeaderExtra.LockReward,header.Number,es)
+
+			harvest := big.NewInt(0)
+			var revertSrt []ExchangeSRTRecord
+			snap1 := snap.copy()
+			currentHeaderExtra.LockReward, revertSrt, harvest,err = snap1.storageVerificationCheck(header.Number.Uint64(), snap1.getBlockPreDay(), a.db, currentHeaderExtra.LockReward)
+             if err!=nil {
+             	return err
+			 }
+			if nil != revertSrt {
+				currentHeaderExtra.ExchangeSRT = append(currentHeaderExtra.ExchangeSRT, revertSrt...)
 			}
-			if number>= MinerUpdateStateFixBlockNumber{
+			if nil != harvest {
+				if nil == currentHeaderExtra.FlowHarvest {
+					currentHeaderExtra.FlowHarvest = new(big.Int).Set(flowHarvest)
+				} else {
+					currentHeaderExtra.FlowHarvest = new(big.Int).Add(currentHeaderExtra.FlowHarvest, harvest)
+				}
+			}
+
+			currentHeaderExtra.LockReward ,err= es.AddLockReward(currentHeaderExtra.LockReward, snap1,a.db,number)
+			if err != nil {
+				return err
+			}
+			err = es.PayLockReward(parentHeaderExtra.LockAccountsRoot, number, state)
+			if err != nil {
+				log.Error("extrastate addlockreward", "error", err)
+				return err
+			}
+			stateRoot, lockAccountRoot, err := es.CommitData()
+			if err != nil {
+				log.Info("extrastate commit failed", "error", err)
+				return err
+			}
+			currentHeaderExtra.ExtraStateRoot = stateRoot
+			currentHeaderExtra.LockAccountsRoot = lockAccountRoot
+			currentHeaderExtra.StorageDataRoot = snap1.StorageData.Hash
+			log.Info("extrastate commit", "number", number, "esstateRoot", stateRoot, "lockaccountsRoot", lockAccountRoot)
+		}
+		if number%(snap.config.MaxSignerCount*snap.LCRS) == (snap.config.MaxSignerCount*snap.LCRS - 1) {
+			if number > tallyRevenueEffectBlockNumber {
+				currentHeaderExtra.ModifyPredecessorVotes = snap.updateTallyState(state)
+			}
+			if number >= MinerUpdateStateFixBlockNumber {
 				currentHeaderExtra.MinerStake = snap.updateMinerState(state)
 			}
 		}
@@ -1431,14 +1495,14 @@ func paymentPledge(hasContract bool, pledge *PledgeItem, state *state.StateDB, h
 		} else {
 			payAddress = pledge.MultiSignature
 		}
-			if isGrantProfitOneTimeBlockNumber(header) {
-				addPayAddressBalance(payAddress, payAddressAll, amount)
-				return 0, amount
-			} else {
-				state.AddBalance(payAddress, amount)
-				log.Info("pay", "Address", payAddress, "amount", amount)
-				return 0, amount
-			}
+		if isGrantProfitOneTimeBlockNumber(header) {
+			addPayAddressBalance(payAddress, payAddressAll, amount)
+			return 0, amount
+		} else {
+			state.AddBalance(payAddress, amount)
+			log.Info("pay", "Address", payAddress, "amount", amount)
+			return 0, amount
+		}
 
 	}
 	return 1, amount

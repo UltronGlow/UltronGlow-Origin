@@ -219,6 +219,12 @@ type Snapshot struct {
 	SCFULBalance   map[common.Address]*big.Int       `json:"fulbalance"`
 	SignerMissing  []common.Address                  `json:"signermissing"`
 	TallySigner       map[common.Address]uint64      `json:"tallySigner"`
+	//StoragePledge      map[common.Address]*PledgeItem                    `json:"Storagepledge"`
+	StorageData *StorageData `json:"storagedata"`
+	SRTIndex *SRTIndex `json:"srtindex"`
+	ExStateRoot     common.Hash                    `json:"extrasstateRoot"`
+	GrantListRoot   common.Hash                    `json:"grantListRoot"`
+	RevenueStorage    map[common.Address]*RevenueParameter             `json:"storagerevenueaddress"`
 }
 
 var (
@@ -276,6 +282,7 @@ func newSnapshot(config *params.AlienConfig, sigcache *lru.ARCCache, hash common
 		Bandwidth:       make(map[common.Address]*ClaimedBandwidth),
 		FlowHarvest:     big.NewInt(0),
 		FlowRevenue:     NewLockProfitSnap(),
+		StorageData : NewStorageSnap(),
 		SystemConfig: SystemParameter{
 			ExchRate:       10000,
 			OffLine:        10000,
@@ -291,6 +298,7 @@ func newSnapshot(config *params.AlienConfig, sigcache *lru.ARCCache, hash common
 		SCFULBalance:   make(map[common.Address]*big.Int),
 		SignerMissing:  []common.Address{},
 		TallySigner: make(map[common.Address]uint64),
+		RevenueStorage:  make(map[common.Address]*RevenueParameter),
 	}
 	snap.HistoryHash = append(snap.HistoryHash, hash)
 
@@ -343,7 +351,9 @@ func newSnapshot(config *params.AlienConfig, sigcache *lru.ARCCache, hash common
 	snap.SystemConfig.ManagerAddress[sscEnumSystem] = managerAddressSystem
 	snap.SystemConfig.ManagerAddress[sscEnumWdthPnsh] = managerAddressWdthPnsh
 	snap.SystemConfig.ManagerAddress[sscEnumFlowReport] = managerAddressFlowReport
-
+	snap.SystemConfig.Deposit[sscEnumPStoragePledgeID] = new(big.Int).Set(storagePledgeIndex)
+	snap.SystemConfig.Deposit[sscEnumLeaseExpires] = new(big.Int).Set(defaultLeaseExpires)
+	snap.SystemConfig.Deposit[sscEnumMinimumRent] = new(big.Int).Set(minimumRentDay)
 	return snap
 }
 
@@ -420,7 +430,18 @@ func loadSnapshot(config *params.AlienConfig, sigcache *lru.ARCCache, db ethdb.D
 	if _, ok := snap.SystemConfig.ManagerAddress[sscEnumFlowReport]; !ok {
 		snap.SystemConfig.ManagerAddress[sscEnumFlowReport] = managerAddressFlowReport
 	}
-
+	if _, ok := snap.SystemConfig.Deposit[sscEnumStoragePrice]; !ok || 0 > snap.SystemConfig.Deposit[sscEnumStoragePrice].Cmp(big.NewInt(0)) {
+		snap.SystemConfig.Deposit[sscEnumStoragePrice] = new(big.Int).Set(baseStoragePrice)
+	}
+	if _, ok := snap.SystemConfig.Deposit[sscEnumPStoragePledgeID]; !ok || 0 > snap.SystemConfig.Deposit[sscEnumPStoragePledgeID].Cmp(big.NewInt(0)) {
+		snap.SystemConfig.Deposit[sscEnumPStoragePledgeID] = new(big.Int).Set(storagePledgeIndex)
+	}
+	if _, ok := snap.SystemConfig.Deposit[sscEnumLeaseExpires]; !ok || 0 > snap.SystemConfig.Deposit[sscEnumLeaseExpires].Cmp(big.NewInt(0)) {
+		snap.SystemConfig.Deposit[sscEnumLeaseExpires] = new(big.Int).Set(defaultLeaseExpires)
+	}
+	if _, ok := snap.SystemConfig.Deposit[sscEnumMinimumRent]; !ok || 0 > snap.SystemConfig.Deposit[sscEnumMinimumRent].Cmp(big.NewInt(0)) {
+		snap.SystemConfig.Deposit[sscEnumMinimumRent] = new(big.Int).Set(minimumRentDay)
+	}
 	return snap, nil
 }
 
@@ -497,6 +518,12 @@ func (s *Snapshot) copy() *Snapshot {
 		SCFULBalance:   make(map[common.Address]*big.Int),
 		SignerMissing:  make([]common.Address, len(s.SignerMissing)),
 		TallySigner: make(map[common.Address]uint64),
+		ExStateRoot:s.ExStateRoot,
+		GrantListRoot:s.GrantListRoot,
+		RevenueStorage:  make(map[common.Address]*RevenueParameter),
+	}
+	if s.StorageData!=nil{
+	   cpy.StorageData = s.StorageData.copy()
 	}
 	copy(cpy.HistoryHash, s.HistoryHash)
 	copy(cpy.Signers, s.Signers)
@@ -548,6 +575,9 @@ func (s *Snapshot) copy() *Snapshot {
 		for number, scConfirmation := range scc.Record {
 			cpy.SCRecordMap[hash].Record[number] = make([]*SCConfirmation, len(scConfirmation))
 			copy(cpy.SCRecordMap[hash].Record[number], scConfirmation)
+		}
+		for rentHash, scRentInfo := range scc.RentReward {
+			cpy.SCRecordMap[hash].RentReward[rentHash] = &SCRentInfo{new(big.Int).Set(scRentInfo.RentPerPeriod), new(big.Int).Set(scRentInfo.MaxRewardNumber)}
 		}
 		for rentHash, scRentInfo := range scc.RentReward {
 			cpy.SCRecordMap[hash].RentReward[rentHash] = &SCRentInfo{new(big.Int).Set(scRentInfo.RentPerPeriod), new(big.Int).Set(scRentInfo.MaxRewardNumber)}
@@ -686,6 +716,19 @@ func (s *Snapshot) copy() *Snapshot {
 	if _, ok := cpy.SystemConfig.Deposit[sscEnumBandwidthReward]; !ok || 0 > cpy.SystemConfig.Deposit[sscEnumBandwidthReward].Cmp(big.NewInt(0)) {
 		cpy.SystemConfig.Deposit[sscEnumBandwidthReward] = new(big.Int).Set(minBandwidthLockBalance)
 	}
+	if _, ok := cpy.SystemConfig.Deposit[sscEnumStoragePrice]; !ok || 0 > cpy.SystemConfig.Deposit[sscEnumStoragePrice].Cmp(big.NewInt(0)) {
+		cpy.SystemConfig.Deposit[sscEnumStoragePrice] = new(big.Int).Set(baseStoragePrice)
+	}
+
+	if _, ok := cpy.SystemConfig.Deposit[sscEnumPStoragePledgeID]; !ok || 0 > cpy.SystemConfig.Deposit[sscEnumPStoragePledgeID].Cmp(big.NewInt(0)) {
+		cpy.SystemConfig.Deposit[sscEnumPStoragePledgeID] = new(big.Int).Set(storagePledgeIndex)
+	}
+	if _, ok := cpy.SystemConfig.Deposit[sscEnumLeaseExpires]; !ok || 0 > cpy.SystemConfig.Deposit[sscEnumLeaseExpires].Cmp(big.NewInt(0)) {
+		cpy.SystemConfig.Deposit[sscEnumLeaseExpires] = new(big.Int).Set(defaultLeaseExpires)
+	}
+	if _, ok := cpy.SystemConfig.Deposit[sscEnumMinimumRent]; !ok || 0 > cpy.SystemConfig.Deposit[sscEnumMinimumRent].Cmp(big.NewInt(0)) {
+		cpy.SystemConfig.Deposit[sscEnumMinimumRent] = new(big.Int).Set(minimumRentDay)
+	}
 	if _, ok := cpy.SystemConfig.LockParameters[sscEnumCndLock]; !ok {
 		cpy.SystemConfig.LockParameters[sscEnumCndLock] = &LockParameter{
 			LockPeriod: uint32(180 * 24 * 60 * 60 / cpy.Period),
@@ -719,7 +762,13 @@ func (s *Snapshot) copy() *Snapshot {
 	if _, ok := cpy.SystemConfig.ManagerAddress[sscEnumFlowReport]; !ok {
 		cpy.SystemConfig.ManagerAddress[sscEnumFlowReport] = managerAddressFlowReport
 	}
-
+	for who, revenue := range s.RevenueStorage {
+		cpy.RevenueStorage[who] = &RevenueParameter{
+			RevenueAddress:  revenue.RevenueAddress,
+			RevenueContract: revenue.RevenueContract,
+			MultiSignature:  revenue.MultiSignature,
+		}
+	}
 	return cpy
 }
 
@@ -828,7 +877,7 @@ func (s *Snapshot) apply(headers []*types.Header, db ethdb.Database) (*Snapshot,
 		}
 		snap.updateFlowRevenueRls(headerExtra.LockReward, header.Number)
 		snap.updateExchangeNFC(headerExtra.ExchangeNFC)
-		snap.updateDeviceBind(headerExtra.DeviceBind)
+		snap.updateDeviceBind(headerExtra.DeviceBind,header.Number.Uint64())
 		snap.updateCandidatePledge(headerExtra.CandidatePledge)
 		snap.updateCandidatePunish(headerExtra.CandidatePunish)
 		snap.updateCandidateExit(headerExtra.CandidateExit, header.Number)
@@ -846,6 +895,16 @@ func (s *Snapshot) apply(headers []*types.Header, db ethdb.Database) (*Snapshot,
 		if header.Number.Uint64()%(snap.config.MaxSignerCount*snap.LCRS) == 0 && header.Number.Uint64() >= signFixBlockNumber {
 			snap.updateSignerNumber(headerExtra.SignerQueue,header.Number.Uint64())
 		}
+		if header.Number.Uint64() >=StorageEffectBlockNumber {
+			reSnap,err:= snap.storageApply(headerExtra,header, db)
+			if err!=nil{
+				return reSnap,nil
+			}
+		}
+		if header.Number.Uint64() ==(StorageEffectBlockNumber-1) {
+			snap.StorageData= NewStorageSnap()
+		}
+
 	}
 	snap.Number += uint64(len(headers))
 	snap.Hash = headers[len(headers)-1].Hash()
@@ -1057,7 +1116,7 @@ func (snap *Snapshot) updateCandidatePledge(candidatePledge []CandidatePledgeRec
 	}
 }
 
-func (snap *Snapshot) updateDeviceBind(deviceBind []DeviceBindRecord) {
+func (snap *Snapshot) updateDeviceBind(deviceBind []DeviceBindRecord,headerNumber uint64) {
 	for _, item := range deviceBind {
 		if item.Type == 0 {
 			if item.Bind {
@@ -1070,15 +1129,28 @@ func (snap *Snapshot) updateDeviceBind(deviceBind []DeviceBindRecord) {
 				delete(snap.RevenueNormal, item.Device)
 			}
 		} else {
-			if item.Bind {
-				snap.RevenueFlow[item.Device] = &RevenueParameter{
-					RevenueAddress:  item.Revenue,
-					RevenueContract: item.Contract,
-					MultiSignature:  item.MultiSign,
+			if headerNumber >=StorageEffectBlockNumber {
+				if item.Bind {
+					snap.RevenueStorage[item.Device] = &RevenueParameter{
+						RevenueAddress:  item.Revenue,
+						RevenueContract: item.Contract,
+						MultiSignature:  item.MultiSign,
+					}
+				} else {
+					delete(snap.RevenueStorage, item.Device)
 				}
-			} else {
-				delete(snap.RevenueFlow, item.Device)
+			}else{
+				if item.Bind {
+					snap.RevenueFlow[item.Device] = &RevenueParameter{
+						RevenueAddress:  item.Revenue,
+						RevenueContract: item.Contract,
+						MultiSignature:  item.MultiSign,
+					}
+				} else {
+					delete(snap.RevenueFlow, item.Device)
+				}
 			}
+
 		}
 	}
 }
@@ -1163,7 +1235,9 @@ func (snap *Snapshot) updateFlowMiner(header *types.Header, db ethdb.Database) {
 }
 
 func (s *Snapshot) updateFlowRevenueRls(LockReward []LockRewardRecord, headerNumber *big.Int) {
-	s.FlowRevenue.updateLockData(s, LockReward, headerNumber)
+	//if headerNumber.Uint64() < StorageEffectBlockNumber{
+		s.FlowRevenue.updateLockData(s, LockReward, headerNumber)
+	//}
 }
 
 func (s *Snapshot) removeExtraCandidate() {
@@ -1754,6 +1828,7 @@ func (s *Snapshot) updateSnapshotByMPVotes(votes []Vote) {
 }
 
 func (s *Snapshot) updateSnapshotForPunish(signerMissing []common.Address, headerNumber *big.Int, coinbase common.Address) {
+	
 	for _, signerEach := range signerMissing {
 		if _, ok := s.Punished[signerEach]; ok {
 			// 10 times of defaultFullCredit is big enough for calculate signer order
