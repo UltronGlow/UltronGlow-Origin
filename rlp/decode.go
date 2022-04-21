@@ -433,7 +433,11 @@ func makeStructDecoder(typ reflect.Type) (decoder, error) {
 					zeroFields(val, fields[i:])
 					break
 				}
-				return &decodeError{msg: "too few elements", typ: typ}
+				if typ.Field(i).Name=="StoragePledge" || typ.Field(i).Name=="StoragePledgeExit" ||typ.Field(i).Name=="LeaseRequest" ||typ.Field(i).Name=="ExchangeSRT" ||typ.Field(i).Name=="LeasePledge" ||typ.Field(i).Name=="LeaseRenewal" ||typ.Field(i).Name=="LeaseRenewalPledge" ||typ.Field(i).Name=="LeaseRescind" ||typ.Field(i).Name=="StorageRecoveryData" ||typ.Field(i).Name=="StorageProofRecord" ||typ.Field(i).Name=="StorageExchangePrice" ||typ.Field(i).Name=="ExtraStateRoot" ||typ.Field(i).Name=="LockAccountsRoot" ||typ.Field(i).Name=="StorageDataRoot" {
+					zeroFields(val, fields[i:])
+				}else{
+					return &decodeError{msg: "too few elements", typ: typ}
+				}
 			} else if err != nil {
 				return addErrorContext(err, "."+typ.Field(f.index).Name)
 			}
