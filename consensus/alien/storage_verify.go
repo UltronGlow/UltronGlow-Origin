@@ -50,10 +50,8 @@ func verifyPocString(block, nonce, blockhash, pocstr, roothash string,deviceAddr
 	}
 
 	if n&1 != 0 {
-		// 奇数随机采样块号, 3个基准块, B0, Bn-1, Bn
 		return verifyPoc(poc[9:], roothash, n)
 	} else {
-		// 偶数随机采样块号, 4个基准块, b0, Bn-1, Bn, Bn+1
 		return verifyPoc(poc[10:], roothash, n)
 	}
 }
