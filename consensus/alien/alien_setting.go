@@ -29,7 +29,7 @@ const (
 	signFixBlockNumber = 326630
 	grantProfitOneTimeBlockNumber=372842
 	lockSimplifyEffectBlocknumber = 380182
-	//ignoreExtraDataNumber         = 394125
+
 	lockMergeNumber = 397000
 	tallyRevenueEffectBlockNumber=516460
 	SigerQueueFixBlockNumber=591790
@@ -43,6 +43,8 @@ const (
 	rentRenewalExpires=95
 	rentFailToRescind=10
 	maxStgVerContinueDayFail      =30    //storage Verification failed and failed for 7 consecutive days
+
+	SPledgeRevertFixBlockNumber=894333
 )
 
 var (

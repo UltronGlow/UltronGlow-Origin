@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/UltronGlow/UltronGlow-Origin/common"
 	"github.com/UltronGlow/UltronGlow-Origin/consensus"
-	"github.com/UltronGlow/UltronGlow-Origin/log"
 	"math/big"
 	"reflect"
 	"strconv"
@@ -906,9 +905,6 @@ func verifyArrayBasic(title string, current interface{}, verify interface{}) (in
 	verifyLen := reflect.ValueOf(verify).Len()
 	if currentLen != verifyLen {
 		return 0, errorsMsg3(title, currentLen, verifyLen)
-	}
-	if currentLen > 1 {
-		log.Error("verifyArrayBasic", "title", title, "current len", currentLen)
 	}
 	return currentLen, nil
 }

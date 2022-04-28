@@ -50,8 +50,10 @@ func verifyPocString(block, nonce, blockhash, pocstr, roothash string,deviceAddr
 	}
 
 	if n&1 != 0 {
+
 		return verifyPoc(poc[9:], roothash, n)
 	} else {
+		
 		return verifyPoc(poc[10:], roothash, n)
 	}
 }

@@ -686,6 +686,19 @@ func (a *Alien) declareStoragePledge(currStoragePledge []SPledgeRecord, txDataIn
 		log.Warn("Storage Pledge storageSize format error", "storageSize", verifyDataArr[4])
 		return currStoragePledge
 	}
+	if blocknumber.Uint64() >= SPledgeRevertFixBlockNumber{
+		blocknum, err := decimal.NewFromString(verifyDataArr[5])
+		if err != nil {
+			log.Warn("Storage Pledge blocknum format error", "blocknum", verifyDataArr[5])
+			return currStoragePledge
+		}
+		actblocknum :=storageCapacity.Div(storageSize)
+		if actblocknum.Cmp(blocknum) != 0{
+			log.Warn("Storage Pledge storageCapacity not same in verify","actblocknum",actblocknum, "blocknum", blocknum.Mul(storageSize))
+			return currStoragePledge
+		}
+	}
+
 	bandwidth, err := decimal.NewFromString(txDataInfo[10])
 
 	if err != nil || bandwidth.BigInt().Cmp(big.NewInt(0)) <= 0 {
@@ -761,7 +774,6 @@ func (s *Snapshot) updateStorageData(pledgeRecord []SPledgeRecord, db ethdb.Data
 		}
 		s.StorageData.StoragePledge[record.Address] = storagepledge
 		s.StorageData.accumulateSpaceStorageFileHash(record.Address, storageFile[record.RootHash]) //update file -->  space -- pledge
-		//log.Info("storage pledge save successfully!", "s.StorageData.StoragePledge", s.StorageData.StoragePledge)
 	}
 	s.StorageData.accumulateHeaderHash() //update all  to header valid root
 }
@@ -1250,7 +1262,7 @@ func (s *StorageData) storageVerificationCheck(number uint64, blockPerday uint64
 	}
 	harvest := big.NewInt(0)
 	zero := big.NewInt(0)
-	spaceLockReward, spaceHarvest := s.calcStoragePledgeReward(storageRatios, revenueStorage, number, period)
+	spaceLockReward, spaceHarvest := s.calcStoragePledgeReward(storageRatios, revenueStorage, number, period,sussSPAddrs)
 	if spaceHarvest.Cmp(zero) > 0 {
 		harvest = new(big.Int).Add(harvest, spaceHarvest)
 	}
@@ -1598,10 +1610,11 @@ func getBandwaith(bandwidth *big.Int) decimal.Decimal {
 }
 
 func (s *StorageData) nYearSpaceProfitReward(n float64) decimal.Decimal {
-	onecut := float64(1) - math.Pow(float64(0.5), n/float64(3))
-	yearScale := decimal.NewFromFloat(onecut)
+	decimalN:=decimal.NewFromFloat(n)
+	yearScale, _ := decimal.NewFromString("0.7937005259840998") //1/2^(1/3)
+	yearScale = decimal.New(1, 0).Sub(yearScale.Pow(decimalN))
 	yearReward := yearScale.Mul(decimal.NewFromBigInt(totalSpaceProfitReward, 0))
-	return yearReward
+	return yearReward.Truncate(18)
 }
 
 func (s *StorageData) checkSRentReNewPg(currentSRentReNewPg []LeaseRenewalPledgeRecord, sRentReNewPg LeaseRenewalPledgeRecord, txSender common.Address, revenueStorage map[common.Address]*RevenueParameter, exchRate uint32) (*big.Int, *big.Int, *big.Int, common.Address, bool) {
@@ -1979,7 +1992,7 @@ func (s *StorageData) storageVerify(number uint64, blockPerday uint64, revenueSt
 			if beforeZeroTime.Cmp(bigMaxFailNum) >= 0 {
 				beforeSevenDayNumber := new(big.Int).Sub(beforeZeroTime, bigMaxFailNum)
 				lastVerSuccTime := sPledge.LastVerificationSuccessTime
-				if lastVerSuccTime.Cmp(beforeSevenDayNumber) < 0 {
+				if lastVerSuccTime.Cmp(beforeSevenDayNumber) <= 0 {
 					sPledge.PledgeStatus = big.NewInt(SPledgeRemoving)
 				}
 			}
@@ -2039,6 +2052,9 @@ func (s *StorageData) dealSPledgeRevert(revertLockReward []SpaceRewardRecord, re
 	return revertLockReward, revertExchangeSRT
 }
 func (s *StorageData) dealSPledgeRevert2(pledge *SPledge, revertLockReward []SpaceRewardRecord, revertExchangeSRT []ExchangeSRTRecord, rate uint32, number uint64, blockPerday uint64) ([]SpaceRewardRecord, []ExchangeSRTRecord) {
+	if number>SPledgeRevertFixBlockNumber{
+		return dealSPledgeRevert3(pledge, revertLockReward, revertExchangeSRT, rate, number, blockPerday)
+	}
 	bigNumber := new(big.Int).SetUint64(number)
 	bigblockPerDay := new(big.Int).SetUint64(blockPerday)
 	zeroTime := new(big.Int).Mul(new(big.Int).Div(bigNumber, bigblockPerDay), bigblockPerDay)
@@ -2157,14 +2173,24 @@ func (s *StorageData) calStorageRatio(totalCapacity *big.Int) decimal.Decimal {
 	return decimal.NewFromInt(0)
 }
 
-func (s *StorageData) calcStoragePledgeReward(ratios map[common.Address]*StorageRatio, revenueStorage map[common.Address]*RevenueParameter, number uint64, period uint64) ([]SpaceRewardRecord, *big.Int) {
+func (s *StorageData) calcStoragePledgeReward(ratios map[common.Address]*StorageRatio, revenueStorage map[common.Address]*RevenueParameter, number uint64, period uint64, sussSPAddrs []common.Address) ([]SpaceRewardRecord, *big.Int) {
 	reward := make([]SpaceRewardRecord, 0)
 	storageHarvest := big.NewInt(0)
 	if nil == ratios || len(ratios) == 0 {
 		return reward, storageHarvest
 	}
+	validSuccSPAddrs := make(map[common.Address]uint64)
+	for _, sPAddrs := range sussSPAddrs {
+		validSuccSPAddrs[sPAddrs] = 1
+	}
+
 	totalPledgeReward := big.NewInt(0)
 	for pledgeAddr, sPledge := range s.StoragePledge {
+		if number>SPledgeRevertFixBlockNumber{
+			if _, ok := validSuccSPAddrs[pledgeAddr]; !ok {
+				continue
+			}
+		}
 		if revenue, ok := revenueStorage[pledgeAddr]; ok {
 			if ratio, ok2 := ratios[revenue.RevenueAddress]; ok2 {
 				bandwidthIndex := getBandwaith(sPledge.Bandwidth)
@@ -2178,7 +2204,7 @@ func (s *StorageData) calcStoragePledgeReward(ratios map[common.Address]*Storage
 		return reward, storageHarvest
 	}
 	blockNumPerYear := secondsPerYear / period
-	yearCount := number / blockNumPerYear
+	yearCount := (number-StorageEffectBlockNumber) / blockNumPerYear
 
 	var yearReward decimal.Decimal
 	yearCount++
@@ -2190,6 +2216,11 @@ func (s *StorageData) calcStoragePledgeReward(ratios map[common.Address]*Storage
 	spaceProfitReward := yearReward.Div(decimal.NewFromInt(365))
 
 	for pledgeAddr, sPledge := range s.StoragePledge {
+		if number>SPledgeRevertFixBlockNumber{
+			if _, ok := validSuccSPAddrs[pledgeAddr]; !ok {
+				continue
+			}
+		}
 		if revenue, ok := revenueStorage[pledgeAddr]; ok {
 			if ratio, ok2 := ratios[revenue.RevenueAddress]; ok2 {
 				bandwidthIndex := getBandwaith(sPledge.Bandwidth)
@@ -2502,4 +2533,34 @@ func (s *StorageData) calDealLeaseStatus() {
 	}
 	s.accumulateHeaderHash()
 	return
+}
+
+func dealSPledgeRevert3(pledge *SPledge, revertLockReward []SpaceRewardRecord, revertExchangeSRT []ExchangeSRTRecord, rate uint32, number uint64, blockPerday uint64) ([]SpaceRewardRecord, []ExchangeSRTRecord) {
+	bigNumber := new(big.Int).SetUint64(number)
+	bigblockPerDay := new(big.Int).SetUint64(blockPerday)
+	zeroTime := new(big.Int).Mul(new(big.Int).Div(bigNumber, bigblockPerDay), bigblockPerDay) //0:00 every day
+	beforeZeroTime := new(big.Int).Sub(zeroTime, bigblockPerDay)
+	maxFailNum := maxStgVerContinueDayFail * blockPerday
+	bigMaxFailNum := new(big.Int).SetUint64(maxFailNum)
+	deposit := pledge.SpaceDeposit
+	depositAddress := pledge.Address
+	revertDeposit := deposit
+
+	if beforeZeroTime.Cmp(bigMaxFailNum) >= 0 {
+		beforeSevenDayNumber := new(big.Int).Sub(beforeZeroTime, bigMaxFailNum)
+		lastVerSuccTime := pledge.LastVerificationSuccessTime
+		if lastVerSuccTime.Cmp(beforeSevenDayNumber) <= 0 {
+			revertDeposit=big.NewInt(0)
+		}
+	}
+
+	zero := big.NewInt(0)
+	if revertDeposit.Cmp(zero) > 0 {
+		revertLockReward = append(revertLockReward, SpaceRewardRecord{
+			Target:  depositAddress,
+			Amount:  revertDeposit,
+			Revenue: depositAddress,
+		})
+	}
+	return revertLockReward, revertExchangeSRT
 }

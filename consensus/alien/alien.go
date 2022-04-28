@@ -1119,7 +1119,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 
 		// play pledge
 		currentHeaderExtra.GrantProfit = []consensus.GrantProfitRecord{}
-		if nil != grantProfit { //&& number < ignoreExtraDataNumber {
+		if nil != grantProfit{
 			currentHeaderExtra.GrantProfit = append(currentHeaderExtra.GrantProfit, grantProfit...)
 		}
 		// play flow
@@ -1162,7 +1162,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 			}
 			if nil != harvest {
 				if nil == currentHeaderExtra.FlowHarvest {
-					currentHeaderExtra.FlowHarvest = new(big.Int).Set(flowHarvest)
+					currentHeaderExtra.FlowHarvest = new(big.Int).Set(harvest)
 				} else {
 					currentHeaderExtra.FlowHarvest = new(big.Int).Add(currentHeaderExtra.FlowHarvest, harvest)
 				}
