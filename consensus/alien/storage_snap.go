@@ -14,7 +14,6 @@ import (
 	"github.com/UltronGlow/UltronGlow-Origin/rlp"
 	"github.com/shopspring/decimal"
 	"golang.org/x/crypto/sha3"
-	"math"
 	"math/big"
 	"sort"
 	"strconv"
@@ -1234,50 +1233,50 @@ func (s *StorageData) updateLeaseRescind(sRescinds []LeaseRescindRecord, number 
 	s.accumulateHeaderHash()
 }
 
-func (s *StorageData) storageVerificationCheck(number uint64, blockPerday uint64, passTime *big.Int, rate uint32, revenueStorage map[common.Address]*RevenueParameter, period uint64, db ethdb.Database, basePrice *big.Int,currentLockReward [] LockRewardRecord) ([] LockRewardRecord,[]ExchangeSRTRecord, *big.Int,error) {
+func (s *StorageData) storageVerificationCheck(number uint64, blockPerday uint64, passTime *big.Int, rate uint32, revenueStorage map[common.Address]*RevenueParameter, period uint64, db ethdb.Database, basePrice *big.Int,currentLockReward [] LockRewardRecord) ([] LockRewardRecord,[]ExchangeSRTRecord, *big.Int,error, *big.Int) {
 
 	sussSPAddrs, sussRentHashs, storageRatios := s.storageVerify(number, blockPerday, revenueStorage)
 
 	err:=s.saveSPledgeSuccTodb(sussSPAddrs, db, number)
 	if err!=nil{
-		return currentLockReward,nil, nil,err
+		return currentLockReward,nil, nil,err,nil
 	}
 	err=s.saveRentSuccTodb(sussRentHashs, db, number)
 	if err!=nil{
-		return currentLockReward,nil, nil,err
+		return currentLockReward,nil, nil,err,nil
 	}
 	revertSpaceLockReward, revertExchangeSRT := s.dealLeaseStatus(number, blockPerday, rate, blockPerday)
 	err=s.saveRevertSpaceLockRewardTodb(revertSpaceLockReward, db, number)
 	if err!=nil{
-		return currentLockReward,nil, nil,err
+		return currentLockReward,nil, nil,err,nil
 	}
 	err=s.saveRevertExchangeSRTTodb(revertExchangeSRT, db, number)
 	if err!=nil{
-		return currentLockReward,nil, nil,err
+		return currentLockReward,nil, nil,err,nil
 	}
 	storageRatios = s.calcStorageRatio(storageRatios)
 	err=s.saveStorageRatiosTodb(storageRatios, db, number)
 	if err!=nil{
-		return currentLockReward,nil, nil,err
+		return currentLockReward,nil, nil,err,nil
 	}
 	harvest := big.NewInt(0)
 	zero := big.NewInt(0)
-	spaceLockReward, spaceHarvest := s.calcStoragePledgeReward(storageRatios, revenueStorage, number, period,sussSPAddrs)
+	spaceLockReward, spaceHarvest,leftAmount := s.calcStoragePledgeReward(storageRatios, revenueStorage, number, period,sussSPAddrs)
 	if spaceHarvest.Cmp(zero) > 0 {
 		harvest = new(big.Int).Add(harvest, spaceHarvest)
 	}
 	err=s.saveSpaceLockRewardTodb(spaceLockReward, revenueStorage, db, number)
 	if err!=nil{
-		return currentLockReward,nil, nil,err
+		return currentLockReward,nil, nil,err,nil
 	}
 	s.deletePasstimeLease(number, blockPerday, passTime)
-	LockLeaseReward, leaseHarvest := s.accumulateLeaseRewards(number, blockPerday, storageRatios, sussRentHashs, basePrice, revenueStorage)
+	LockLeaseReward, leaseHarvest := s.accumulateLeaseRewards(storageRatios, sussRentHashs, basePrice, revenueStorage)
 	if leaseHarvest.Cmp(zero) > 0 {
 		harvest = new(big.Int).Add(harvest, leaseHarvest)
 	}
 	err=s.saveLeaseLockRewardTodb(LockLeaseReward, db, number)
 	if err!=nil{
-		return currentLockReward,nil, nil,err
+		return currentLockReward,nil, nil,err,nil
 	}
 	if  currentLockReward!= nil{
 		for _,item:= range revertSpaceLockReward{
@@ -1303,7 +1302,7 @@ func (s *StorageData) storageVerificationCheck(number uint64, blockPerday uint64
 			})
 		}
 	}
-	return currentLockReward,revertExchangeSRT, harvest,nil
+	return currentLockReward,revertExchangeSRT, harvest,nil,leftAmount
 }
 
 /**
@@ -1525,18 +1524,30 @@ func (s *Snapshot) updateStorageProof(proofDatas []StorageProofRecord, headerNum
 }
 
 func (s *StorageData) calStorageLeaseReward(capacity decimal.Decimal, bandwidthIndex decimal.Decimal, storageIndex decimal.Decimal,
-	priceIndex decimal.Decimal, duration decimal.Decimal, headerNumber uint64, blockPreDay uint64) *big.Int {
-	yearBlockNumber := 365 * blockPreDay
-	n := headerNumber / yearBlockNumber
-	if headerNumber%yearBlockNumber > 0 {
-		n += 1
+	priceIndex decimal.Decimal, duration decimal.Decimal,totalLeaseSpace decimal.Decimal) decimal.Decimal {
+	oneEb:=decimal.NewFromBigInt(tb1b,0).Mul(decimal.NewFromInt(1048576)) //1eb= B
+	modeeb:=totalLeaseSpace.Mod(oneEb)
+	neb:=big.NewInt(1)
+	if totalLeaseSpace.Cmp(oneEb) > 0{
+		neb=totalLeaseSpace.Div(oneEb).BigInt()
+		if modeeb.Cmp(decimal.NewFromInt(0))> 0 {
+			neb=new(big.Int).Add(neb,big.NewInt(1))
+		}
 	}
-	ebReward := decimal.NewFromBigInt(totalBlockReward, 0).Mul(decimal.NewFromFloat(float64(1) - math.Pow(float64(0.5), float64(n)/float64(12))))
-	tbUTGRate := ebReward.Div(decimal.NewFromInt(1048576))
-	return capacity.Mul(priceIndex).Mul(duration).Mul(bandwidthIndex).Mul(storageIndex).Mul(tbUTGRate).BigInt()
-}
+	pwern,_:=decimal.NewFromString("0.9982686325973925")//0.5^1/400
+	//Total_UTG(PoTS)×(1−0.5^n/400)  1EB rewards
+	ebReward :=decimal.NewFromBigInt(totalBlockReward, 0).Mul(decimal.NewFromInt(1).Sub(pwern.Pow(decimal.NewFromBigInt(neb,0))))
+	beforebReward := decimal.NewFromInt(0)
+	if neb.Cmp(big.NewInt(1))>0{
+		beforeNeb :=new(big.Int).Sub(neb,big.NewInt(1))
+		beforebReward=decimal.NewFromBigInt(totalBlockReward, 0).Mul(decimal.NewFromInt(1).Sub(pwern.Pow(decimal.NewFromBigInt(beforeNeb,0))))
+	}
+	ebReward=ebReward.Sub(beforebReward)
 
-func (s *StorageData) accumulateLeaseRewards(headerNumber uint64, blockPerDay uint64, ratios map[common.Address]*StorageRatio,
+	gbUTGRate := ebReward.Div(decimal.NewFromInt(1073741824))
+	return gbUTGRate.Mul(capacity).Mul(priceIndex).Mul(bandwidthIndex).Mul(storageIndex)
+}
+func (s *StorageData) accumulateLeaseRewards( ratios map[common.Address]*StorageRatio,
 	addrs []common.Hash, basePrice *big.Int, revenueStorage map[common.Address]*RevenueParameter) ([]SpaceRewardRecord, *big.Int) {
 	var LockReward []SpaceRewardRecord
 	//basePrice := // SRT /TB.day
@@ -1544,7 +1555,7 @@ func (s *StorageData) accumulateLeaseRewards(headerNumber uint64, blockPerDay ui
 	if nil == addrs || len(addrs) == 0 {
 		return LockReward, storageHarvest
 	}
-	totalLeaseSpace := decimal.NewFromInt(0)
+	totalLeaseSpace := decimal.NewFromInt(0)//B
 	validSuccLesae := make(map[common.Hash]uint64)
 	for _, leaseHash := range addrs {
 		validSuccLesae[leaseHash] = 1
@@ -1552,7 +1563,7 @@ func (s *StorageData) accumulateLeaseRewards(headerNumber uint64, blockPerDay ui
 	for _, storage := range s.StoragePledge {
 		for leaseHash, lease := range storage.Lease {
 			if _, ok := validSuccLesae[leaseHash]; ok {
-				totalLeaseSpace = totalLeaseSpace.Add(decimal.NewFromBigInt(lease.Capacity, 0).Div(decimal.NewFromInt(1099511627776))) //TB
+				totalLeaseSpace = totalLeaseSpace.Add(decimal.NewFromBigInt(lease.Capacity, 0))
 			}
 		}
 	}
@@ -1563,13 +1574,11 @@ func (s *StorageData) accumulateLeaseRewards(headerNumber uint64, blockPerDay ui
 		if revenue, ok := revenueStorage[pledgeAddr]; ok {
 			for leaseHash, lease := range storage.Lease {
 				if _, ok2 := validSuccLesae[leaseHash]; ok2 {
-					leaseCapacity := decimal.NewFromBigInt(lease.Capacity, 0).Div(decimal.NewFromInt(1099511627776)) //to TB
-					toTBprice := new(big.Int).Mul(lease.UnitPrice, big.NewInt(1024))                                 //SRT /TB.day
-					priceIndex := decimal.NewFromBigInt(toTBprice, 0).Div(decimal.NewFromBigInt(basePrice, 0))
-					if _, ok3 := ratios[revenue.RevenueAddress]; ok3 {
-						reward := s.calStorageLeaseReward(leaseCapacity, bandwidthIndex, ratios[revenue.RevenueAddress].Ratio, priceIndex, decimal.NewFromBigInt(lease.Duration, 0),
-							headerNumber, blockPerDay)
-						totalReward = new(big.Int).Add(totalReward, reward)
+					leaseCapacity := decimal.NewFromBigInt(lease.Capacity, 0).Div(decimal.NewFromInt(1073741824)) //to GB
+					priceIndex := decimal.NewFromBigInt(lease.UnitPrice, 0).Div(decimal.NewFromBigInt(basePrice, 0))//RT/GB.day
+					if item, ok3 := ratios[revenue.RevenueAddress]; ok3 {
+						reward := s.calStorageLeaseReward(leaseCapacity, bandwidthIndex, item.Ratio, priceIndex, decimal.NewFromBigInt(lease.Duration, 0),totalLeaseSpace)
+						totalReward = new(big.Int).Add(totalReward, reward.BigInt())
 					}
 				}
 			}
@@ -1609,8 +1618,8 @@ func getBandwaith(bandwidth *big.Int) decimal.Decimal {
 
 }
 
-func (s *StorageData) nYearSpaceProfitReward(n float64) decimal.Decimal {
-	decimalN:=decimal.NewFromFloat(n)
+func (s *StorageData) nYearSpaceProfitReward(n uint64) decimal.Decimal {
+	decimalN:=decimal.NewFromBigInt(new(big.Int).SetUint64(n),0)
 	yearScale, _ := decimal.NewFromString("0.7937005259840998") //1/2^(1/3)
 	yearScale = decimal.New(1, 0).Sub(yearScale.Pow(decimalN))
 	yearReward := yearScale.Mul(decimal.NewFromBigInt(totalSpaceProfitReward, 0))
@@ -2173,11 +2182,27 @@ func (s *StorageData) calStorageRatio(totalCapacity *big.Int) decimal.Decimal {
 	return decimal.NewFromInt(0)
 }
 
-func (s *StorageData) calcStoragePledgeReward(ratios map[common.Address]*StorageRatio, revenueStorage map[common.Address]*RevenueParameter, number uint64, period uint64, sussSPAddrs []common.Address) ([]SpaceRewardRecord, *big.Int) {
+func (s *StorageData) calcStoragePledgeReward(ratios map[common.Address]*StorageRatio, revenueStorage map[common.Address]*RevenueParameter, number uint64, period uint64, sussSPAddrs []common.Address) ([]SpaceRewardRecord, *big.Int, *big.Int) {
 	reward := make([]SpaceRewardRecord, 0)
 	storageHarvest := big.NewInt(0)
+	leftAmount:=common.Big0
+
+	blockNumPerYear := secondsPerYear / period
+	yearCount := (number-StorageEffectBlockNumber) / blockNumPerYear
+
+	var yearReward decimal.Decimal
+	yearCount++
+	if yearCount == 1 {
+		yearReward = s.nYearSpaceProfitReward(yearCount)
+	} else {
+		yearReward = s.nYearSpaceProfitReward(yearCount).Sub(s.nYearSpaceProfitReward(yearCount - 1))
+	}
+	spaceProfitReward := yearReward.Div(decimal.NewFromInt(365))
+	if number>AdjustSPRBlockNumber {
+		leftAmount=new(big.Int).Set(spaceProfitReward.BigInt())
+	}
 	if nil == ratios || len(ratios) == 0 {
-		return reward, storageHarvest
+		return reward, storageHarvest,leftAmount
 	}
 	validSuccSPAddrs := make(map[common.Address]uint64)
 	for _, sPAddrs := range sussSPAddrs {
@@ -2201,19 +2226,16 @@ func (s *StorageData) calcStoragePledgeReward(ratios map[common.Address]*Storage
 		}
 	}
 	if totalPledgeReward.Cmp(common.Big0) == 0 {
-		return reward, storageHarvest
+		return reward, storageHarvest,leftAmount
 	}
-	blockNumPerYear := secondsPerYear / period
-	yearCount := (number-StorageEffectBlockNumber) / blockNumPerYear
 
-	var yearReward decimal.Decimal
-	yearCount++
-	if yearCount == 1 {
-		yearReward = s.nYearSpaceProfitReward(float64(yearCount))
-	} else {
-		yearReward = s.nYearSpaceProfitReward(float64(yearCount)).Sub(s.nYearSpaceProfitReward(float64(yearCount - 1)))
+	if number>AdjustSPRBlockNumber {
+		tb1b1024 := new(big.Int).Mul(big.NewInt(1024), tb1b)
+		pt100:=new(big.Int).Mul(big.NewInt(100), tb1b1024)
+		if totalPledgeReward.Cmp(pt100)<0{
+			totalPledgeReward=pt100
+		}
 	}
-	spaceProfitReward := yearReward.Div(decimal.NewFromInt(365))
 
 	for pledgeAddr, sPledge := range s.StoragePledge {
 		if number>SPledgeRevertFixBlockNumber{
@@ -2234,12 +2256,17 @@ func (s *StorageData) calcStoragePledgeReward(ratios map[common.Address]*Storage
 					Revenue: revenue.RevenueAddress,
 				})
 				storageHarvest = new(big.Int).Add(storageHarvest, pledgeReward)
-
-
 			}
 		}
 	}
-	return reward, storageHarvest
+
+	if number>AdjustSPRBlockNumber {
+		bigSPR:=spaceProfitReward.BigInt()
+		if bigSPR.Cmp(storageHarvest)>0 {
+			leftAmount=new(big.Int).Sub(bigSPR,storageHarvest)
+		}
+	}
+	return reward, storageHarvest,leftAmount
 }
 
 func (s *StorageData) saveSpaceLockRewardTodb(reward []SpaceRewardRecord, storage map[common.Address]*RevenueParameter, db ethdb.Database, number uint64) error {
@@ -2467,13 +2494,13 @@ func (s *Snapshot) updateLeaseRescind(rescinds []LeaseRescindRecord, number *big
 	s.StorageData.updateLeaseRescind(rescinds, number, db)
 }
 
-func (s *Snapshot) storageVerificationCheck(number uint64, blockPerday uint64, db ethdb.Database,currentLockReward [] LockRewardRecord) ([]LockRewardRecord,[]ExchangeSRTRecord, *big.Int,error) {
+func (s *Snapshot) storageVerificationCheck(number uint64, blockPerday uint64, db ethdb.Database,currentLockReward [] LockRewardRecord) ([]LockRewardRecord,[]ExchangeSRTRecord, *big.Int,error, *big.Int) {
 	if isStorageVerificationCheck(number, s.Period) {
 		passTime := new(big.Int).Mul(s.SystemConfig.Deposit[sscEnumLeaseExpires], new(big.Int).SetUint64(blockPerday))
 		basePrice := new(big.Int).Mul(s.SystemConfig.Deposit[sscEnumStoragePrice], big.NewInt(1024))
 		return s.StorageData.storageVerificationCheck(number, blockPerday, passTime, s.SystemConfig.ExchRate, s.RevenueStorage, s.Period, db, basePrice, currentLockReward)
 	}
-	return currentLockReward,nil, nil,nil
+	return currentLockReward,nil, nil,nil,nil
 }
 
 func (snap *Snapshot) updateHarvest(harvest *big.Int) {

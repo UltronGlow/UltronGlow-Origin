@@ -1153,7 +1153,8 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 			harvest := big.NewInt(0)
 			var revertSrt []ExchangeSRTRecord
 			snap1 := snap.copy()
-			currentHeaderExtra.LockReward, revertSrt, harvest,err = snap1.storageVerificationCheck(header.Number.Uint64(), snap1.getBlockPreDay(), a.db, currentHeaderExtra.LockReward)
+			leftAmount:=common.Big0
+			currentHeaderExtra.LockReward, revertSrt, harvest,err,leftAmount = snap1.storageVerificationCheck(header.Number.Uint64(), snap1.getBlockPreDay(), a.db, currentHeaderExtra.LockReward)
              if err!=nil {
              	return err
 			 }
@@ -1185,6 +1186,9 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 			currentHeaderExtra.ExtraStateRoot = stateRoot
 			currentHeaderExtra.LockAccountsRoot = lockAccountRoot
 			currentHeaderExtra.StorageDataRoot = snap1.StorageData.Hash
+			if leftAmount!=nil &&leftAmount.Cmp(common.Big0)>0{
+				state.AddBalance(common.BigToAddress(big.NewInt(0)),leftAmount)
+			}
 			log.Info("extrastate commit", "number", number, "esstateRoot", stateRoot, "lockaccountsRoot", lockAccountRoot)
 		}
 		if number%(snap.config.MaxSignerCount*snap.LCRS) == (snap.config.MaxSignerCount*snap.LCRS - 1) {

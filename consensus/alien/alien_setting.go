@@ -45,6 +45,7 @@ const (
 	maxStgVerContinueDayFail      =30    //storage Verification failed and failed for 7 consecutive days
 
 	SPledgeRevertFixBlockNumber=894333
+	AdjustSPRBlockNumber=974868 //Adjust calc StoragePledgeReward
 )
 
 var (
