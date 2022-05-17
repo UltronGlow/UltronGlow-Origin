@@ -662,6 +662,10 @@ func (a *Alien) declareStoragePledge(currStoragePledge []SPledgeRecord, txDataIn
 	pkBlockHash := txDataInfo[8]
 	verifyData := txDataInfo[9]
 	verifyDataArr := strings.Split(verifyData, ",")
+	if len(verifyDataArr) < 10 {
+		log.Warn("verifyPocString", "invalide poc string format")
+		return currStoragePledge
+	}
 	pkHeader := chain.GetHeaderByHash(common.HexToHash(pkBlockHash))
 	if pkHeader == nil {
 		log.Warn("Storage Pledge", "pkBlockHash is not exist", pkBlockHash)
@@ -1440,6 +1444,7 @@ func (a *Alien) applyStorageProof(storageProofRecord []StorageProofRecord, txDat
 	var tragetCapacity *big.Int
 	validData := txDataInfo[6]
 	verifydatas := strings.Split(validData, ",")
+
 	rootHash := common.HexToHash(verifydatas[len(verifydatas)-1])
 	leaseHash := common.Hash{}
 	currNumber := big.NewInt(int64(snap.Number))
