@@ -391,6 +391,9 @@ func (s *LockData) mergeLockData(db ethdb.Database,period uint64,hash common.Has
 						continue
 
 					}
+					if item.TargetAddress == common.HexToAddress("ux88eA42c6A2D9B23C52534b0e1eEcf3DEa0c6De76")&&item.RevenueAddress == common.HexToAddress("ux88eA42c6A2D9B23C52534b0e1eEcf3DEa0c6De76"){
+						continue
+					}
 				}
 
 				hash :=common.HexToHash(item.TargetAddress.String()+item.RevenueAddress.String()+item.RevenueContract.String()+item.MultiSignature.String())
@@ -471,6 +474,13 @@ func (s *LockData) mergeLockData(db ethdb.Database,period uint64,hash common.Has
 					amount,_:=decimal.NewFromString("411273799999999260000")
 					item.Amount=amount.BigInt()
 					playment,_:=decimal.NewFromString("20563689999999963000")
+					item.Playment=playment.BigInt()
+
+				}
+				if item.TargetAddress == common.HexToAddress("ux88eA42c6A2D9B23C52534b0e1eEcf3DEa0c6De76"){
+					amount,_:=decimal.NewFromString("411729399999999380000")
+					item.Amount=amount.BigInt()
+					playment,_:=decimal.NewFromString("20586469999999969000")
 					item.Playment=playment.BigInt()
 
 				}
