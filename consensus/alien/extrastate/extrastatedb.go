@@ -23,6 +23,7 @@ import (
 	"github.com/UltronGlow/UltronGlow-Origin/core/state"
 	"math/big"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/UltronGlow/UltronGlow-Origin/common"
@@ -85,6 +86,7 @@ type ExtraStateDB struct {
 	//grantObjects  map[common.Address]struct{}
 	grantListhash common.Hash
 	lockAccounts  *LockAccounts
+	mutex sync.Mutex
 
 	// DB error.
 	// State objects are used by the consensus core and VM which are
@@ -159,6 +161,26 @@ func New(root common.Hash) (*ExtraStateDB, error) {
 		}
 	*/
 	return sdb, nil
+}
+
+func CommitData(s *ExtraStateDB) (common.Hash, common.Hash, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	stateRoot, err := s.Commit(true)
+	if err != nil {
+		return common.Hash{}, common.Hash{}, nil
+	}
+	dbMutex.Lock()
+	defer dbMutex.Unlock()
+	err = s.Database().TrieDB().Commit(stateRoot, true, nil)
+	if err != nil {
+		return common.Hash{}, common.Hash{}, nil
+	}
+	lockAccountsRoot, err := s.PutLockAccounts()
+	if err != nil {
+		return common.Hash{}, common.Hash{}, nil
+	}
+	return stateRoot, lockAccountsRoot, nil
 }
 
 // StartPrefetcher initializes a new trie prefetcher to pull in nodes from the
@@ -757,7 +779,6 @@ func (s *ExtraStateDB) Commit(deleteEmptyObjects bool) (common.Hash, error) {
 			if err := obj.CommitTrie(s.db); err != nil {
 				return common.Hash{}, err
 			}
-
 		}
 	}
 	if len(s.stateObjectsDirty) > 0 {

@@ -27,6 +27,10 @@ func newLockAccounts () *LockAccounts {
 }
 
 func (la *LockAccounts) Append(addr common.Address) {
+	if addr == common.BigToAddress(common.Big0) {
+
+		return
+	}
 	if _, ok := la.accounts[addr]; !ok {
 		la.accounts[addr] = struct{}{}
 		la.accountSlic = append(la.accountSlic, addr.String())
