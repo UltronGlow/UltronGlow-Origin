@@ -27,25 +27,26 @@ const (
 	maxCandidateMiner = 500  //	The maximum number of candidate nodes participating in each election is 500
 	electionPartitionThreshold = 36 //Election partition threshold
 	signFixBlockNumber = 326630
-	grantProfitOneTimeBlockNumber=372842
+	grantProfitOneTimeBlockNumber = 372842
 	lockSimplifyEffectBlocknumber = 380182
 
 	lockMergeNumber = 397000
-	tallyRevenueEffectBlockNumber=516460
-	SigerQueueFixBlockNumber=591790
+	tallyRevenueEffectBlockNumber = 516460
+	SigerQueueFixBlockNumber = 591790
 	SigerElectNewEffectBlockNumber = 661874
 	MinerUpdateStateFixBlockNumber = 757054
 	TallyPunishdProcessEffectBlockNumber = 757114
-	TallyPunishdFixBlockNumber =774331
-	StorageEffectBlockNumber=834261
+	TallyPunishdFixBlockNumber = 774331
+	StorageEffectBlockNumber = 834261
 	//storage
 	storageVerificationCheck    = 1 * 60 * 60   //return funds where contract expiration
 	rentRenewalExpires=95
 	rentFailToRescind=10
 	maxStgVerContinueDayFail      =30    //storage Verification failed and failed for 7 consecutive days
 
-	SPledgeRevertFixBlockNumber=894333
-	AdjustSPRBlockNumber=974868 //Adjust calc StoragePledgeReward
+	SPledgeRevertFixBlockNumber = 894333
+	AdjustSPRBlockNumber = 974868 //Adjust calc StoragePledgeReward
+	storageVerifyNewEffectNumber = 1073447
 )
 
 var (

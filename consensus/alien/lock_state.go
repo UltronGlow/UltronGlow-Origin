@@ -79,6 +79,8 @@ func (c *ExtraLockState) PayLockReward(LockAccountsRoot common.Hash, number uint
 }
 
 func (c *ExtraLockState) CommitData() (common.Hash, common.Hash, error) {
+	return extrastate.CommitData(c.es)
+	/*
 	stateRoot, err := c.es.Commit(true)
 	if err != nil {
 		return common.Hash{}, common.Hash{}, nil
@@ -93,6 +95,7 @@ func (c *ExtraLockState) CommitData() (common.Hash, common.Hash, error) {
 		return common.Hash{}, common.Hash{}, nil
 	}
 	return stateRoot, lockAccountsRoot, nil
+	 */
 }
 
 func (c *ExtraLockState) AddLockReward(LockReward []LockRewardRecord, snap *Snapshot, db ethdb.Database, number uint64) ([]LockRewardRecord,error) {

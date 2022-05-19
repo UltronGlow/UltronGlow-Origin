@@ -661,6 +661,14 @@ func (a *Alien) declareStoragePledge(currStoragePledge []SPledgeRecord, txDataIn
 	}
 	pkBlockHash := txDataInfo[8]
 	verifyData := txDataInfo[9]
+	verifyType :=""
+	if blocknumber.Uint64() >= storageVerifyNewEffectNumber  {
+		if strings.HasPrefix(verifyData,"v1"){
+			verifyType="v1"
+			verifyData=verifyData[3:]
+		}
+
+	}
 	verifyDataArr := strings.Split(verifyData, ",")
 	if len(verifyDataArr) < 10 {
 		log.Warn("verifyPocString", "invalide poc string format")
@@ -680,9 +688,16 @@ func (a *Alien) declareStoragePledge(currStoragePledge []SPledgeRecord, txDataIn
 		return currStoragePledge
 	}
 	rootHash := verifyDataArr[len(verifyDataArr)-1]
-	if !verifyPocString(startPkNumber, txDataInfo[7], pkBlockHash, verifyData, rootHash, txDataInfo[3]) {
-		log.Warn("Storage Pledge  verifyPoc Faild", "startPkNumber", startPkNumber, "pkNonce", pkNonce, "pkBlockHash", pkBlockHash)
-		return currStoragePledge
+	if verifyType == "v1" {
+		if !verifyPocStringV1(startPkNumber, txDataInfo[7], pkBlockHash, txDataInfo[9], rootHash, txDataInfo[3]) {
+			log.Warn("Storage Pledge  verifyPoc Faild", "startPkNumber", startPkNumber, "pkNonce", pkNonce, "pkBlockHash", pkBlockHash)
+			return currStoragePledge
+		}
+	}else{
+		if !verifyPocString(startPkNumber, txDataInfo[7], pkBlockHash, verifyData, rootHash, txDataInfo[3]) {
+			log.Warn("Storage Pledge  verifyPoc Faild", "startPkNumber", startPkNumber, "pkNonce", pkNonce, "pkBlockHash", pkBlockHash)
+			return currStoragePledge
+		}
 	}
 	storageSize, err := decimal.NewFromString(verifyDataArr[4])
 	if err != nil {
@@ -1443,8 +1458,14 @@ func (a *Alien) applyStorageProof(storageProofRecord []StorageProofRecord, txDat
 	}
 	var tragetCapacity *big.Int
 	validData := txDataInfo[6]
+	verifyType :=""
+	if blocknumber.Uint64() >= storageVerifyNewEffectNumber  {
+		if strings.HasPrefix(validData,"v1"){
+			verifyType="v1"
+			validData=validData[3:]
+		}
+	}
 	verifydatas := strings.Split(validData, ",")
-
 	rootHash := common.HexToHash(verifydatas[len(verifydatas)-1])
 	leaseHash := common.Hash{}
 	currNumber := big.NewInt(int64(snap.Number))
@@ -1487,9 +1508,16 @@ func (a *Alien) applyStorageProof(storageProofRecord []StorageProofRecord, txDat
 		log.Warn("applyStorageProof data timeout  ", "TimeOut", proofTimeOut,"currNumber",currNumber,"proof number",verifyHeader.Number)
 		return storageProofRecord
 	}
-	if !verifyStoragePoc(validData, storagepledge.StorageSpaces.RootHash.String(), 0) {
-		log.Warn("applyStorageProof   verify  faild", "roothash", storagepledge.StorageSpaces.RootHash.String())
-        return storageProofRecord
+	if verifyType =="v1" {
+		if !verifyStoragePocV1(txDataInfo[6], storagepledge.StorageSpaces.RootHash.String(), verifyHeader.Nonce.Uint64()) {
+			log.Warn("applyStorageProof   verify  faild", "roothash", storagepledge.StorageSpaces.RootHash.String())
+			return storageProofRecord
+		}
+	}else{
+		if !verifyStoragePoc(validData, storagepledge.StorageSpaces.RootHash.String(), verifyHeader.Nonce.Uint64()) {
+			log.Warn("applyStorageProof   verify  faild", "roothash", storagepledge.StorageSpaces.RootHash.String())
+			return storageProofRecord
+		}
 	}
 
 	proofRecord := StorageProofRecord{

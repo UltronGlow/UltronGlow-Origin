@@ -19,10 +19,10 @@ nonce, blockhash
 	pocstr
 	roothash
 */
-func verifyPocString(block, nonce, blockhash, pocstr, roothash string,deviceAddr string) bool {
+func verifyPocString(block, nonce, blockhash, pocstr, roothash string, deviceAddr string) bool {
 	poc := strings.Split(pocstr, ",")
 	if len(poc) < 10 {
-		log.Warn("verifyPocString","invalide poc string format")
+		log.Warn("verifyPocString", "invalide poc string format")
 		return false
 	}
 
@@ -33,38 +33,37 @@ func verifyPocString(block, nonce, blockhash, pocstr, roothash string,deviceAddr
 	bnpos := 8
 
 	//
-	if !verifyB0(block, nonce, blockhash, poc[b0pos],deviceAddr) {
-		log.Warn("verifyPocString","verify b0 failed")
+	if !verifyB0(block, nonce, blockhash, poc[b0pos], deviceAddr) {
+		log.Warn("verifyPocString", "verify b0 failed")
 		return false
 	}
 
 	if !verifyBn(poc[sampleNumberpos], poc[b0pos], poc[bnpos], poc[b1pos]) {
-		log.Warn("verifyPocString","verify bn failed")
+		log.Warn("verifyPocString", "verify bn failed")
 		return false
 	}
 
 	n, _ := strconv.ParseUint(poc[sampleNumberpos], 10, 64)
 	if !verifySamplePos(n, poc[0], poc[1], poc[2], poc[blocknumberpos]) {
-		log.Warn("verifyPocString","verify samplenumber failed")
+		log.Warn("verifyPocString", "verify samplenumber failed")
 		return false
 	}
 
 	if n&1 != 0 {
-
 		return verifyPoc(poc[9:], roothash, n)
 	} else {
-		
 		return verifyPoc(poc[10:], roothash, n)
 	}
 }
-func verifyStoragePoc(pocstr, roothash string,nonce uint64) bool {
+
+func verifyStoragePoc(pocstr, roothash string, nonce uint64) bool {
 	poc := strings.Split(pocstr, ",")
 	if len(poc) < 10 {
-		log.Warn("verifyStoragePoc","invalide poc string format")
+		log.Warn("verifyStoragePoc", "invalide poc string format")
 		return false
 	}
-    if poc[1]!=strconv.FormatUint(nonce,10){
-		log.Warn("verifyStoragePoc","invalide nonce")
+	if poc[1] != strconv.FormatUint(nonce, 10) {
+		log.Warn("verifyStoragePoc", "invalide nonce")
 		return false
 	}
 
@@ -74,15 +73,14 @@ func verifyStoragePoc(pocstr, roothash string,nonce uint64) bool {
 	b1pos := 7
 	bnpos := 8
 
-
 	if !verifyBn(poc[sampleNumberpos], poc[b0pos], poc[bnpos], poc[b1pos]) {
-		log.Warn("verifyPocString","verify bn failed")
+		log.Warn("verifyPocString", "verify bn failed")
 		return false
 	}
 
 	n, _ := strconv.ParseUint(poc[sampleNumberpos], 10, 64)
 	if !verifySamplePos(n, poc[0], poc[1], poc[2], poc[blocknumberpos]) {
-		log.Warn("verifyPocString","verify samplenumber failed")
+		log.Warn("verifyPocString", "verify samplenumber failed")
 		return false
 	}
 
@@ -90,7 +88,7 @@ func verifyStoragePoc(pocstr, roothash string,nonce uint64) bool {
 
 		return verifyPoc(poc[9:], roothash, n)
 	} else {
-		
+
 		return verifyPoc(poc[10:], roothash, n)
 	}
 }
@@ -101,7 +99,7 @@ func verifyPoc(pocstr []string, roothash string, r uint64) bool {
 	)
 
 	if len(pocstr)&1 != 1 {
-		log.Warn("verifyPoc","invalide poc data, len:", len(pocstr))
+		log.Warn("verifyPoc", "invalide poc data, len:", len(pocstr))
 		return false
 	}
 
@@ -116,17 +114,17 @@ func verifyPoc(pocstr []string, roothash string, r uint64) bool {
 
 		if round&1 != 1 {
 			hash = Hash(pocstr[i], pocstr[i+1], "")
-			log.Debug("verifyPoc","round",round+1, "hash:", pocstr[i], pocstr[i+1], "=>", hash)
+			log.Debug("verifyPoc", "round", round+1, "hash:", pocstr[i], pocstr[i+1], "=>", hash)
 		} else {
 			hash = Acc(pocstr[i], pocstr[i+1], "")
-			log.Debug("verifyPoc","round",round+1, "acc: ", pocstr[i], pocstr[i+1], "=>", hash)
+			log.Debug("verifyPoc", "round", round+1, "acc: ", pocstr[i], pocstr[i+1], "=>", hash)
 		}
 		r = r / 2
 		hashpos = int(r & 1)
 		//fmt.Println("cal hash:", hash, "pos", hashpos)
 		round++
 	}
-	log.Warn("verifyPoc","root hash:", hash,"roothash",roothash,"pocstr[len(pocstr)-1]",pocstr[len(pocstr)-1],"common.HexToHash(hash)",common.HexToHash(hash))
+	log.Warn("verifyPoc", "root hash:", hash, "roothash", roothash, "pocstr[len(pocstr)-1]", pocstr[len(pocstr)-1], "common.HexToHash(hash)", common.HexToHash(hash))
 
 	if hash == pocstr[len(pocstr)-1] && common.HexToHash(hash) == common.HexToHash(roothash) {
 		return true
@@ -134,15 +132,16 @@ func verifyPoc(pocstr []string, roothash string, r uint64) bool {
 	return false
 }
 
-func verifyB0(block, nonce, blockhash, b0hash string,deviceAddr string) bool {
-	b0 := Sha1([]byte(block + nonce + blockhash+deviceAddr))
+func verifyB0(block, nonce, blockhash, b0hash string, deviceAddr string) bool {
+	//log.Info("verifyB0","block",block,"nonce",nonce,"b0hash",b0hash,"deviceAddr",deviceAddr)
+	b0 := Sha1([]byte(block + nonce + blockhash + deviceAddr))
 	return b0 == b0hash
 }
 
 func verifyBn(blockpos, b0, bn, bn1 string) bool {
 	n, err := strconv.ParseUint(blockpos, 10, 64)
 	if err != nil {
-		log.Warn("verifyPoc","parse blockpos failed:", err)
+		log.Warn("verifyPoc", "parse blockpos failed:", err)
 		return false
 	}
 	if n&1 == 0 {
@@ -153,7 +152,7 @@ func verifyBn(blockpos, b0, bn, bn1 string) bool {
 
 func verifySamplePos(n uint64, block, nonce, blockhash, fileblocknumber string) bool {
 	if n != getSamplePos(block, nonce, blockhash, fileblocknumber) {
-		log.Warn("verifySamplePos","verify simble number failed")
+		log.Warn("verifySamplePos", "verify simble number failed")
 		return false
 	}
 	return true
@@ -165,6 +164,7 @@ func getSamplePos(block, nonce, blockhash, fileblocknumber string) uint64 {
 	n := new(big.Int).Mod(hash2bigint(b1), pos).Uint64()
 	return n
 }
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 func Hash(b1, b2, pos string) string {
 	bb1, _ := hex.DecodeString(b1)
