@@ -47,6 +47,7 @@ const (
 	SPledgeRevertFixBlockNumber = 894333
 	AdjustSPRBlockNumber = 974868 //Adjust calc StoragePledgeReward
 	storageVerifyNewEffectNumber = 1073447
+	storagePledgeTmpVerifyEffectNumber = 1103667
 )
 
 var (
@@ -59,6 +60,7 @@ var (
 	storagePledgeIndex    = big.NewInt(1)
 	defaultLeaseExpires=big.NewInt(1)
 	minimumRentDay=big.NewInt(30)
+	novalidPktime=uint64(7)
 )
 
 func (a *Alien) blockPerDay() uint64 {

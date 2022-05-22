@@ -667,26 +667,28 @@ func (a *Alien) declareStoragePledge(currStoragePledge []SPledgeRecord, txDataIn
 			verifyType="v1"
 			verifyData=verifyData[3:]
 		}
-
 	}
 	verifyDataArr := strings.Split(verifyData, ",")
 	if len(verifyDataArr) < 10 {
 		log.Warn("verifyPocString", "invalide poc string format")
 		return currStoragePledge
 	}
-	pkHeader := chain.GetHeaderByHash(common.HexToHash(pkBlockHash))
-	if pkHeader == nil {
-		log.Warn("Storage Pledge", "pkBlockHash is not exist", pkBlockHash)
-		return currStoragePledge
+	if blocknumber.Uint64() <storagePledgeTmpVerifyEffectNumber ||blocknumber.Uint64() >storagePledgeTmpVerifyEffectNumber+a.blockPerDay()*novalidPktime{
+		pkHeader := chain.GetHeaderByHash(common.HexToHash(pkBlockHash))
+		if pkHeader == nil {
+			log.Warn("Storage Pledge", "pkBlockHash is not exist", pkBlockHash)
+			return currStoragePledge
+		}
+		if verifyDataArr[4]!= storageBlockSize {
+			log.Warn("Storage Pledge storageBlockSize error", "storageBlockSize", storageBlockSize,"verifyDataArr[4]",verifyDataArr[4])
+			return currStoragePledge
+		}
+		if pkHeader.Number.String() != startPkNumber || pkHeader.Nonce.Uint64()!=pkNonce.BigInt().Uint64(){
+			log.Warn("Storage Pledge  packege param compare error", "startPkNumber", startPkNumber, "pkNonce", pkNonce, "pkBlockHash", pkBlockHash, " chain", pkHeader.Number)
+			return currStoragePledge
+		}
 	}
-	if verifyDataArr[4]!= storageBlockSize {
-		log.Warn("Storage Pledge storageBlockSize error", "storageBlockSize", storageBlockSize,"verifyDataArr[4]",verifyDataArr[4])
-		return currStoragePledge
-	}
-	if pkHeader.Number.String() != startPkNumber || pkHeader.Nonce.Uint64()!=pkNonce.BigInt().Uint64(){
-		log.Warn("Storage Pledge  packege param compare error", "startPkNumber", startPkNumber, "pkNonce", pkNonce, "pkBlockHash", pkBlockHash, " chain", pkHeader.Number)
-		return currStoragePledge
-	}
+
 	rootHash := verifyDataArr[len(verifyDataArr)-1]
 	if verifyType == "v1" {
 		if !verifyPocStringV1(startPkNumber, txDataInfo[7], pkBlockHash, txDataInfo[9], rootHash, txDataInfo[3]) {
