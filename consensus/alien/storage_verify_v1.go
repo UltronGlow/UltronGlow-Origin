@@ -9,9 +9,8 @@ import (
 
 func verifyPocStringV1(block, nonce, blockhash, pocstr, roothash, deviceAddr string) bool {
 	poc := strings.Split(pocstr, ",")
-	//log.Info("verifyPocStringV1","pocstr",pocstr)
 	if len(poc) < 10 {
-		log.Warn("verifyStoragePoc", "invalide poc string format")
+		log.Warn("verifyStoragePoc", "invalide poc string format len(poc)",len(poc))
 		return false
 	}
 	if poc[0] != "v1" {

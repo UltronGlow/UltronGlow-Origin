@@ -48,7 +48,6 @@ const (
 	AdjustSPRBlockNumber = 974868 //Adjust calc StoragePledgeReward
 	storageVerifyNewEffectNumber = 1073447
 	storagePledgeTmpVerifyEffectNumber = 1103667
-	StorageChBwEffectNumber = 1172695
 )
 
 var (

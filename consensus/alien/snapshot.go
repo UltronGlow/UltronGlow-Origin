@@ -904,9 +904,7 @@ func (s *Snapshot) apply(headers []*types.Header, db ethdb.Database) (*Snapshot,
 		if header.Number.Uint64() ==(StorageEffectBlockNumber-1) {
 			snap.StorageData= NewStorageSnap()
 		}
-		if header.Number.Uint64() >= StorageChBwEffectNumber{
-			snap.updateStorageBandWidth(headerExtra.StorageExchangeBw, header.Number, nil)
-		}
+
 	}
 	snap.Number += uint64(len(headers))
 	snap.Hash = headers[len(headers)-1].Hash()
