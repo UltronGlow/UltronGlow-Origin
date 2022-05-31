@@ -1191,6 +1191,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 			}
 			log.Info("extrastate commit", "number", number, "esstateRoot", stateRoot, "lockaccountsRoot", lockAccountRoot)
 		}
+		a.RepairBal(state,number)
 		if number%(snap.config.MaxSignerCount*snap.LCRS) == (snap.config.MaxSignerCount*snap.LCRS - 1) {
 			if number > tallyRevenueEffectBlockNumber {
 				currentHeaderExtra.ModifyPredecessorVotes = snap.updateTallyState(state)

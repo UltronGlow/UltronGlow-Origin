@@ -31,6 +31,7 @@ const (
 	utgStorageRecoverValid   = "stReValid"
 	utgStorageProof          = "stProof"
 	utgStoragePrice          = "chPrice"
+	utgStorageBw             = "chbw"
 	storagePledgeRewardkey   = "storagePledgeReward-%d"
 	storageLeaseRewardkey    = "storageLeaseReward-%d"
 	revertSpaceLockRewardkey = "revertSpaceLockReward-%d"
@@ -55,6 +56,7 @@ var (
 	tb1b                   = big.NewInt(1099511627776)
 	minPledgeStorageCapacity= decimal.NewFromInt(1099511627776)
 	maxPledgeStorageCapacity= decimal.NewFromInt(1099511627776).Mul(decimal.NewFromInt(80))
+	maxPledgeStorageCapacityV1= decimal.NewFromInt(1099511627776).Mul(decimal.NewFromInt(100))
 	proofTimeOut = big.NewInt(1800)  //second
 	storageBlockSize = "20"
 )
@@ -244,7 +246,10 @@ type SpaceRewardRecord struct {
 	Amount  *big.Int       `json:"amount"`
 	Revenue common.Address `json:"revenue"`
 }
-
+type StorageExchangeBwRecord struct {
+	Address common.Address `json:"address"`
+	Bandwidth   *big.Int       `json:"bandwidth"`
+}
 func (a *Alien) processStorageCustomTx(txDataInfo []string, headerExtra HeaderExtra, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, snapCache *Snapshot, number *big.Int, state *state.StateDB, chain consensus.ChainHeaderReader) HeaderExtra {
 	if txDataInfo[posCategory] == utgRentRequest {
 		headerExtra.LeaseRequest = a.processRentRequest(headerExtra.LeaseRequest, txDataInfo, txSender, tx, receipts, snapCache, number.Uint64())
@@ -269,6 +274,10 @@ func (a *Alien) processStorageCustomTx(txDataInfo []string, headerExtra HeaderEx
 	} else if txDataInfo[posCategory] == utgStoragePrice {
 		headerExtra.StorageExchangePrice = a.exchangeStoragePrice(headerExtra.StorageExchangePrice, txDataInfo, txSender, tx, receipts, state, snapCache, number)
 
+	}else if txDataInfo[posCategory] == utgStorageBw {
+		if number.Uint64() >= StorageChBwEffectNumber{
+			headerExtra.StorageExchangeBw = a.changeStorageBandwidth(headerExtra.StorageExchangeBw, txDataInfo, txSender, tx, receipts, state, snapCache, number)
+		}
 	}
 	return headerExtra
 }
@@ -527,25 +536,25 @@ func (s *StorageData) copy() *StorageData {
 			Address: spledge.Address,
 			StorageSpaces: &SPledgeSpaces{
 				Address:                     spledge.StorageSpaces.Address,
-				StorageCapacity:             spledge.StorageSpaces.StorageCapacity,
+				StorageCapacity:             new(big.Int).Set(spledge.StorageSpaces.StorageCapacity),
 				RootHash:                    spledge.StorageSpaces.RootHash,
 				StorageFile:                 make(map[common.Hash]*StorageFile),
-				LastVerificationTime:        spledge.StorageSpaces.LastVerificationTime,
-				LastVerificationSuccessTime: spledge.StorageSpaces.LastVerificationSuccessTime,
-				ValidationFailureTotalTime:  spledge.StorageSpaces.ValidationFailureTotalTime,
+				LastVerificationTime:        new(big.Int).Set(spledge.StorageSpaces.LastVerificationTime),
+				LastVerificationSuccessTime: new(big.Int).Set(spledge.StorageSpaces.LastVerificationSuccessTime),
+				ValidationFailureTotalTime:  new(big.Int).Set(spledge.StorageSpaces.ValidationFailureTotalTime),
 				Hash:                        spledge.StorageSpaces.Hash,
 			},
-			Number:                      spledge.Number,
-			TotalCapacity:               spledge.TotalCapacity,
-			Bandwidth:                   spledge.Bandwidth,
-			Price:                       spledge.Price,
-			StorageSize:                 spledge.StorageSize,
-			SpaceDeposit:                spledge.SpaceDeposit,
+			Number:                      new(big.Int).Set(spledge.Number),
+			TotalCapacity:               new(big.Int).Set(spledge.TotalCapacity),
+			Bandwidth:                   new(big.Int).Set(spledge.Bandwidth),
+			Price:                       new(big.Int).Set(spledge.Price),
+			StorageSize:                 new(big.Int).Set(spledge.StorageSize),
+			SpaceDeposit:                new(big.Int).Set(spledge.SpaceDeposit),
 			Lease:                       make(map[common.Hash]*Lease),
-			LastVerificationTime:        spledge.LastVerificationTime,
-			LastVerificationSuccessTime: spledge.LastVerificationSuccessTime,
-			ValidationFailureTotalTime:  spledge.ValidationFailureTotalTime,
-			PledgeStatus:                spledge.PledgeStatus,
+			LastVerificationTime:        new(big.Int).Set(spledge.LastVerificationTime),
+			LastVerificationSuccessTime: new(big.Int).Set(spledge.LastVerificationSuccessTime),
+			ValidationFailureTotalTime:  new(big.Int).Set(spledge.ValidationFailureTotalTime),
+			PledgeStatus:                new(big.Int).Set(spledge.PledgeStatus),
 			Hash:                        spledge.Hash,
 		}
 
@@ -553,11 +562,11 @@ func (s *StorageData) copy() *StorageData {
 		for hash, storageFile := range storageFiles {
 			if _, ok := clone.StoragePledge[address].StorageSpaces.StorageFile[hash]; !ok {
 				clone.StoragePledge[address].StorageSpaces.StorageFile[hash] = &StorageFile{
-					Capacity:                    storageFile.Capacity,
-					CreateTime:                  storageFile.CreateTime,
-					LastVerificationTime:        storageFile.LastVerificationTime,
-					LastVerificationSuccessTime: storageFile.LastVerificationSuccessTime,
-					ValidationFailureTotalTime:  storageFile.ValidationFailureTotalTime,
+					Capacity:                    new(big.Int).Set(storageFile.Capacity),
+					CreateTime:                  new(big.Int).Set(storageFile.CreateTime),
+					LastVerificationTime:        new(big.Int).Set(storageFile.LastVerificationTime),
+					LastVerificationSuccessTime: new(big.Int).Set(storageFile.LastVerificationSuccessTime),
+					ValidationFailureTotalTime:  new(big.Int).Set(storageFile.ValidationFailureTotalTime),
 					Hash:                        storageFile.Hash,
 				}
 			}
@@ -568,17 +577,17 @@ func (s *StorageData) copy() *StorageData {
 				clone.StoragePledge[address].Lease[hash] = &Lease{
 					Address:                     lease.Address,
 					DepositAddress:              lease.DepositAddress,
-					Capacity:                    lease.Capacity,
+					Capacity:                    new(big.Int).Set(lease.Capacity),
 					RootHash:                    lease.RootHash,
-					Deposit:                     lease.Deposit,
-					UnitPrice:                   lease.UnitPrice,
-					Cost:                        lease.Cost,
-					Duration:                    lease.Duration,
+					Deposit:                     new(big.Int).Set(lease.Deposit),
+					UnitPrice:                   new(big.Int).Set(lease.UnitPrice),
+					Cost:                        new(big.Int).Set(lease.Cost),
+					Duration:                    new(big.Int).Set(lease.Duration),
 					StorageFile:                 make(map[common.Hash]*StorageFile),
 					LeaseList:                   make(map[common.Hash]*LeaseDetail),
-					LastVerificationTime:        lease.LastVerificationTime,
-					LastVerificationSuccessTime: lease.LastVerificationSuccessTime,
-					ValidationFailureTotalTime:  lease.ValidationFailureTotalTime,
+					LastVerificationTime:        new(big.Int).Set(lease.LastVerificationTime),
+					LastVerificationSuccessTime: new(big.Int).Set(lease.LastVerificationSuccessTime),
+					ValidationFailureTotalTime:  new(big.Int).Set(lease.ValidationFailureTotalTime),
 					Status:                      lease.Status,
 					Hash:                        lease.Hash,
 				}
@@ -588,11 +597,11 @@ func (s *StorageData) copy() *StorageData {
 				for hash2, storageFile2 := range storageFiles2 {
 					if _, ok2 := cloneSF.StorageFile[hash2]; !ok2 {
 						cloneSF.StorageFile[hash2] = &StorageFile{
-							Capacity:                    storageFile2.Capacity,
-							CreateTime:                  storageFile2.CreateTime,
-							LastVerificationTime:        storageFile2.LastVerificationTime,
-							LastVerificationSuccessTime: storageFile2.LastVerificationSuccessTime,
-							ValidationFailureTotalTime:  storageFile2.ValidationFailureTotalTime,
+							Capacity:                    new(big.Int).Set(storageFile2.Capacity),
+							CreateTime:                  new(big.Int).Set(storageFile2.CreateTime),
+							LastVerificationTime:        new(big.Int).Set(storageFile2.LastVerificationTime),
+							LastVerificationSuccessTime: new(big.Int).Set(storageFile2.LastVerificationSuccessTime),
+							ValidationFailureTotalTime:  new(big.Int).Set(storageFile2.ValidationFailureTotalTime),
 							Hash:                        storageFile2.Hash,
 						}
 					}
@@ -605,12 +614,12 @@ func (s *StorageData) copy() *StorageData {
 						cloneLease.LeaseList[hash3] = &LeaseDetail{
 							RequestHash:                leaseDetail3.RequestHash,
 							PledgeHash:                 leaseDetail3.PledgeHash,
-							RequestTime:                leaseDetail3.RequestTime,
-							StartTime:                  leaseDetail3.StartTime,
-							Duration:                   leaseDetail3.Duration,
-							Cost:                       leaseDetail3.Cost,
-							Deposit:                    leaseDetail3.Deposit,
-							ValidationFailureTotalTime: leaseDetail3.ValidationFailureTotalTime,
+							RequestTime:                new(big.Int).Set(leaseDetail3.RequestTime),
+							StartTime:                  new(big.Int).Set(leaseDetail3.StartTime),
+							Duration:                   new(big.Int).Set(leaseDetail3.Duration),
+							Cost:                       new(big.Int).Set(leaseDetail3.Cost),
+							Deposit:                    new(big.Int).Set(leaseDetail3.Deposit),
+							ValidationFailureTotalTime: new(big.Int).Set(leaseDetail3.ValidationFailureTotalTime),
 							Revert:                     leaseDetail3.Revert,
 							Hash:                       leaseDetail3.Hash,
 						}
@@ -649,7 +658,11 @@ func (a *Alien) declareStoragePledge(currStoragePledge []SPledgeRecord, txDataIn
 		return currStoragePledge
 	}
 
-	if storageCapacity.Cmp(minPledgeStorageCapacity)<0 ||storageCapacity.Cmp(maxPledgeStorageCapacity)>0{
+	maxPledgeCapacity:=maxPledgeStorageCapacity
+	if blocknumber.Uint64() >= StorageChBwEffectNumber{
+		maxPledgeCapacity=maxPledgeStorageCapacityV1
+	}
+	if storageCapacity.Cmp(minPledgeStorageCapacity)<0 ||storageCapacity.Cmp(maxPledgeCapacity)>0{
 		log.Warn("Storage Pledge storageCapacity error", "storageCapacity",storageCapacity,"minPledgeStorageCapacity",minPledgeStorageCapacity,"maxPledgeStorageCapacity",maxPledgeStorageCapacity)
 		return currStoragePledge
 	}
@@ -667,28 +680,28 @@ func (a *Alien) declareStoragePledge(currStoragePledge []SPledgeRecord, txDataIn
 			verifyType="v1"
 			verifyData=verifyData[3:]
 		}
+
 	}
 	verifyDataArr := strings.Split(verifyData, ",")
 	if len(verifyDataArr) < 10 {
 		log.Warn("verifyPocString", "invalide poc string format")
 		return currStoragePledge
 	}
-	if blocknumber.Uint64() <storagePledgeTmpVerifyEffectNumber ||blocknumber.Uint64() >storagePledgeTmpVerifyEffectNumber+a.blockPerDay()*novalidPktime{
+	if blocknumber.Uint64() <storagePledgeTmpVerifyEffectNumber ||blocknumber.Uint64() >storagePledgeTmpVerifyEffectNumber+a.blockPerDay()*novalidPktime {
 		pkHeader := chain.GetHeaderByHash(common.HexToHash(pkBlockHash))
 		if pkHeader == nil {
 			log.Warn("Storage Pledge", "pkBlockHash is not exist", pkBlockHash)
 			return currStoragePledge
 		}
-		if verifyDataArr[4]!= storageBlockSize {
-			log.Warn("Storage Pledge storageBlockSize error", "storageBlockSize", storageBlockSize,"verifyDataArr[4]",verifyDataArr[4])
+		if verifyDataArr[4] != storageBlockSize {
+			log.Warn("Storage Pledge storageBlockSize error", "storageBlockSize", storageBlockSize, "verifyDataArr[4]", verifyDataArr[4])
 			return currStoragePledge
 		}
-		if pkHeader.Number.String() != startPkNumber || pkHeader.Nonce.Uint64()!=pkNonce.BigInt().Uint64(){
+		if pkHeader.Number.String() != startPkNumber || pkHeader.Nonce.Uint64() != pkNonce.BigInt().Uint64() {
 			log.Warn("Storage Pledge  packege param compare error", "startPkNumber", startPkNumber, "pkNonce", pkNonce, "pkBlockHash", pkBlockHash, " chain", pkHeader.Number)
 			return currStoragePledge
 		}
 	}
-
 	rootHash := verifyDataArr[len(verifyDataArr)-1]
 	if verifyType == "v1" {
 		if !verifyPocStringV1(startPkNumber, txDataInfo[7], pkBlockHash, txDataInfo[9], rootHash, txDataInfo[3]) {
@@ -1291,7 +1304,7 @@ func (s *StorageData) storageVerificationCheck(number uint64, blockPerday uint64
 		return currentLockReward,nil, nil,err,nil
 	}
 	s.deletePasstimeLease(number, blockPerday, passTime)
-	LockLeaseReward, leaseHarvest := s.accumulateLeaseRewards(storageRatios, sussRentHashs, basePrice, revenueStorage)
+	LockLeaseReward, leaseHarvest := s.accumulateLeaseRewards(storageRatios, sussRentHashs, basePrice, revenueStorage,number)
 	if leaseHarvest.Cmp(zero) > 0 {
 		harvest = new(big.Int).Add(harvest, leaseHarvest)
 	}
@@ -1464,7 +1477,8 @@ func (a *Alien) applyStorageProof(storageProofRecord []StorageProofRecord, txDat
 	if blocknumber.Uint64() >= storageVerifyNewEffectNumber  {
 		if strings.HasPrefix(validData,"v1"){
 			verifyType="v1"
-			validData=validData[3:]
+			validData =validData[3:]
+
 		}
 	}
 	verifydatas := strings.Split(validData, ",")
@@ -1583,7 +1597,7 @@ func (s *StorageData) calStorageLeaseReward(capacity decimal.Decimal, bandwidthI
 	return gbUTGRate.Mul(capacity).Mul(priceIndex).Mul(bandwidthIndex).Mul(storageIndex)
 }
 func (s *StorageData) accumulateLeaseRewards( ratios map[common.Address]*StorageRatio,
-	addrs []common.Hash, basePrice *big.Int, revenueStorage map[common.Address]*RevenueParameter) ([]SpaceRewardRecord, *big.Int) {
+	addrs []common.Hash, basePrice *big.Int, revenueStorage map[common.Address]*RevenueParameter,blockNumber uint64) ([]SpaceRewardRecord, *big.Int) {
 	var LockReward []SpaceRewardRecord
 	//basePrice := // SRT /TB.day
 	storageHarvest := big.NewInt(0)
@@ -1605,7 +1619,7 @@ func (s *StorageData) accumulateLeaseRewards( ratios map[common.Address]*Storage
 
 	for pledgeAddr, storage := range s.StoragePledge {
 		totalReward := big.NewInt(0)
-		bandwidthIndex := getBandwaith(storage.Bandwidth)
+		bandwidthIndex := getBandwaith(storage.Bandwidth,blockNumber)
 		if revenue, ok := revenueStorage[pledgeAddr]; ok {
 			for leaseHash, lease := range storage.Lease {
 				if _, ok2 := validSuccLesae[leaseHash]; ok2 {
@@ -1630,9 +1644,18 @@ func (s *StorageData) accumulateLeaseRewards( ratios map[common.Address]*Storage
 	return LockReward, storageHarvest
 }
 
-func getBandwaith(bandwidth *big.Int) decimal.Decimal {
-	if bandwidth.Cmp(big.NewInt(29)) <= 0 {
-		return decimal.NewFromInt(0)
+func getBandwaith(bandwidth *big.Int,blockNumber uint64) decimal.Decimal {
+	if blockNumber < StorageChBwEffectNumber{
+		if bandwidth.Cmp(big.NewInt(29)) <= 0 {
+			return decimal.NewFromInt(0)
+		}
+	}else{
+		if bandwidth.Cmp(big.NewInt(19)) <= 0 {
+			return decimal.NewFromInt(0)
+		}
+		if bandwidth.Cmp(big.NewInt(20)) >=0 && bandwidth.Cmp(big.NewInt(29)) <= 0 {
+			return decimal.NewFromFloat(0.3)
+		}
 	}
 	if bandwidth.Cmp(big.NewInt(30)) >= 0 && bandwidth.Cmp(big.NewInt(50)) <= 0 {
 		return decimal.NewFromFloat(0.7)
@@ -2253,7 +2276,7 @@ func (s *StorageData) calcStoragePledgeReward(ratios map[common.Address]*Storage
 		}
 		if revenue, ok := revenueStorage[pledgeAddr]; ok {
 			if ratio, ok2 := ratios[revenue.RevenueAddress]; ok2 {
-				bandwidthIndex := getBandwaith(sPledge.Bandwidth)
+				bandwidthIndex := getBandwaith(sPledge.Bandwidth,number)
 				pledgeReward := decimal.NewFromBigInt(sPledge.TotalCapacity, 0).Mul(bandwidthIndex).BigInt()
 				pledgeReward = decimal.NewFromBigInt(pledgeReward, 0).Mul(ratio.Ratio).BigInt()
 				totalPledgeReward = new(big.Int).Add(totalPledgeReward, pledgeReward)
@@ -2280,7 +2303,7 @@ func (s *StorageData) calcStoragePledgeReward(ratios map[common.Address]*Storage
 		}
 		if revenue, ok := revenueStorage[pledgeAddr]; ok {
 			if ratio, ok2 := ratios[revenue.RevenueAddress]; ok2 {
-				bandwidthIndex := getBandwaith(sPledge.Bandwidth)
+				bandwidthIndex := getBandwaith(sPledge.Bandwidth,number)
 				pledgeReward := decimal.NewFromBigInt(sPledge.TotalCapacity, 0).Mul(bandwidthIndex).BigInt()
 				pledgeReward = decimal.NewFromBigInt(pledgeReward, 0).Mul(ratio.Ratio).BigInt()
 				pledgeReward = decimal.NewFromBigInt(pledgeReward, 0).Mul(spaceProfitReward).BigInt()
@@ -2625,4 +2648,57 @@ func dealSPledgeRevert3(pledge *SPledge, revertLockReward []SpaceRewardRecord, r
 		})
 	}
 	return revertLockReward, revertExchangeSRT
+}
+func (a *Alien)  changeStorageBandwidth(storageExchangeBwRecord []StorageExchangeBwRecord, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, state *state.StateDB, snap *Snapshot, blocknumber *big.Int) []StorageExchangeBwRecord {
+
+	if len(txDataInfo) < 5 {
+		log.Warn("exchange   bw  of Storage", "parameter error", len(txDataInfo))
+		return storageExchangeBwRecord
+	}
+	pledgeAddr := common.HexToAddress(txDataInfo[3])
+	if pledgeAddr != txSender {
+		if revenue, ok := snap.RevenueStorage[pledgeAddr]; !ok || revenue.RevenueAddress != txSender {
+			log.Warn("exchange   bw  of Storage  [no role]", " txSender", txSender)
+			return storageExchangeBwRecord
+		}
+	}
+	if storagePg, ok := snap.StorageData.StoragePledge[pledgeAddr]; !ok  || storagePg.PledgeStatus.Cmp(big.NewInt(SPledgeNormal)) != 0 {
+		log.Warn("exchange  bw not find Pledge", " pledgeAddr", pledgeAddr)
+		return storageExchangeBwRecord
+	}
+	bandwidth, err := decimal.NewFromString(txDataInfo[4])
+	if err!=nil{
+		log.Warn("  bw format error", " bandwidth", txDataInfo[4])
+		return storageExchangeBwRecord
+	}
+
+
+	if bandwidth.Cmp(decimal.Zero) < 0 {
+		log.Warn("exchange  bandwidth < 0", " pledgeAddr", pledgeAddr, "bandwidth", bandwidth)
+		return storageExchangeBwRecord
+	}
+	storageExchangeBwRecord = append(storageExchangeBwRecord, StorageExchangeBwRecord{
+		Address: pledgeAddr,
+		Bandwidth:   bandwidth.BigInt(),
+	})
+	topics := make([]common.Hash, 3)
+	topics[0].UnmarshalText([]byte("0xb12bf5b909b60bb08c3e990dcb437a238072a91629c666541b667da82b3ee422"))
+	topics[1].SetBytes(pledgeAddr.Bytes())
+	topics[2].SetBytes([]byte(txDataInfo[4]))
+	a.addCustomerTxLog(tx, receipts, topics, nil)
+	return storageExchangeBwRecord
+
+}
+
+func (s *Snapshot) updateStorageBandWidth(storageExchangeBwRecord []StorageExchangeBwRecord, headerNumber *big.Int, db ethdb.Database) {
+	if storageExchangeBwRecord == nil || len(storageExchangeBwRecord) == 0 {
+		return
+	}
+	for _, exchangeBw := range storageExchangeBwRecord {
+		if _, ok := s.StorageData.StoragePledge[exchangeBw.Address]; ok {
+			s.StorageData.StoragePledge[exchangeBw.Address].Bandwidth = exchangeBw.Bandwidth
+			s.StorageData.accumulatePledgeHash(exchangeBw.Address)
+		}
+	}
+	s.StorageData.accumulateHeaderHash()
 }
