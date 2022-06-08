@@ -687,20 +687,21 @@ func (a *Alien) declareStoragePledge(currStoragePledge []SPledgeRecord, txDataIn
 		log.Warn("verifyPocString", "invalide poc string format")
 		return currStoragePledge
 	}
-	if blocknumber.Uint64() <storagePledgeTmpVerifyEffectNumber ||blocknumber.Uint64() >storagePledgeTmpVerifyEffectNumber+a.blockPerDay()*novalidPktime {
+	if !a.notVerifyPkHeader(blocknumber.Uint64()) {
 		pkHeader := chain.GetHeaderByHash(common.HexToHash(pkBlockHash))
-		if pkHeader == nil {
-			log.Warn("Storage Pledge", "pkBlockHash is not exist", pkBlockHash)
-			return currStoragePledge
-		}
+		   if pkHeader == nil {
+				log.Warn("Storage Pledge", "pkBlockHash is not exist", pkBlockHash)
+				return currStoragePledge
+			}
 		if verifyDataArr[4] != storageBlockSize {
 			log.Warn("Storage Pledge storageBlockSize error", "storageBlockSize", storageBlockSize, "verifyDataArr[4]", verifyDataArr[4])
 			return currStoragePledge
 		}
 		if pkHeader.Number.String() != startPkNumber || pkHeader.Nonce.Uint64() != pkNonce.BigInt().Uint64() {
-			log.Warn("Storage Pledge  packege param compare error", "startPkNumber", startPkNumber, "pkNonce", pkNonce, "pkBlockHash", pkBlockHash, " chain", pkHeader.Number)
-			return currStoragePledge
+				log.Warn("Storage Pledge  packege param compare error", "startPkNumber", startPkNumber, "pkNonce", pkNonce, "pkBlockHash", pkBlockHash, " chain", pkHeader.Number)
+				return currStoragePledge
 		}
+
 	}
 	rootHash := verifyDataArr[len(verifyDataArr)-1]
 	if verifyType == "v1" {
@@ -744,7 +745,7 @@ func (a *Alien) declareStoragePledge(currStoragePledge []SPledgeRecord, txDataIn
 	}
 	pledgeAmount := calStPledgeAmount(storageCapacity, snap, decimal.NewFromBigInt(totalStorage, 0), blocknumber)
 	if state.GetBalance(txSender).Cmp(pledgeAmount) < 0 {
-		log.Warn("Claimed sotrage", "balance", state.GetBalance(txSender))
+		log.Warn("Claimed storage", "balance", state.GetBalance(txSender))
 		return currStoragePledge
 	}
 	state.SetBalance(txSender, new(big.Int).Sub(state.GetBalance(txSender), pledgeAmount))

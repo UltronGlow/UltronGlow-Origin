@@ -49,6 +49,7 @@ const (
 	storageVerifyNewEffectNumber = 1073447
 	storagePledgeTmpVerifyEffectNumber = 1103667
 	StorageChBwEffectNumber = 1170700
+	storagePledgeTmpVerifyEffectNumberV2 = 1240413
 )
 
 var (
@@ -62,6 +63,7 @@ var (
 	defaultLeaseExpires=big.NewInt(1)
 	minimumRentDay=big.NewInt(30)
 	novalidPktime=uint64(7)
+	novalidVfPktime = uint64(30)
 )
 
 func (a *Alien) blockPerDay() uint64 {
@@ -120,4 +122,9 @@ func isStorageVerificationCheck(number uint64, period uint64) bool {
 	block := storageVerificationCheck / period
 	blockPerDay := secondsPerDay / period
 	return block == number%blockPerDay && block != number
+}
+func  (a *Alien) notVerifyPkHeader(number uint64) bool{
+   r1:=	number >=storagePledgeTmpVerifyEffectNumber && number <=storagePledgeTmpVerifyEffectNumber+a.blockPerDay()*novalidPktime
+   r2:= number >=storagePledgeTmpVerifyEffectNumberV2 && number <=storagePledgeTmpVerifyEffectNumberV2+a.blockPerDay()*novalidVfPktime
+   return r1 || r2
 }

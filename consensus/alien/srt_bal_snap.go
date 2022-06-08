@@ -57,7 +57,7 @@ func (srtI *SRTIndex) loadSRTBal(number uint64,db ethdb.Database) (map[common.Ad
 	key := fmt.Sprintf(utgBalKey, number)
 	blob, err := db.Get([]byte(key))
 	if err != nil {
-		log.Info("loadSRTBal Get", "err", err)
+		log.Debug("loadSRTBal Get", "err", err)
 		return nil, err
 	}
 	Balances := make(map[common.Address]*big.Int)
